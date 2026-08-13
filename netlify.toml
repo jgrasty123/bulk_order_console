@@ -1,0 +1,32 @@
+[build]
+  publish = "."
+  functions = "netlify/functions"
+  command = ""
+
+[functions]
+  node_bundler = "esbuild"
+  included_files = ["config/**"]
+
+# Active development: never let a stale app.js survive a structural change.
+# Tighten these once the tool stops changing weekly.
+[[headers]]
+  for = "/assets/app.js"
+  [headers.values]
+    Cache-Control = "max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/assets/styles.css"
+  [headers.values]
+    Cache-Control = "max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/config/*"
+  [headers.values]
+    Cache-Control = "max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "same-origin"

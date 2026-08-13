@@ -1,0 +1,31 @@
+{
+  "_REVIEW": "[REVIEW] The destination-state screening list below is NOT legally confirmed. Orders created through the Admin API bypass Shopify checkout entirely, which means the age gate and state screening that normally run at checkout DO NOT RUN for bulk batches. Until an attorney-confirmed list is entered here and mode is set to 'allowlist', the validator will flag every batch with an unscreened-destination warning. Do not remove this notice without sign-off.",
+
+  "screening": {
+    "mode": "off",
+    "_modeOptions": "off | allowlist",
+    "shippableStates": [],
+    "notes": "When mode is 'allowlist', any recipient whose state is absent from shippableStates fails validation with code E20. Leave shippableStates empty until counsel supplies it."
+  },
+
+  "carrier": {
+    "blockPoBoxes": true,
+    "blockMilitaryAddresses": true,
+    "_note": "Common carriers will not deliver alcohol to PO boxes or APO/FPO/DPO addresses. These are hard failures, not warnings."
+  },
+
+  "limits": {
+    "maxRowsPerBatch": 300,
+    "maxGiftMessageChars": 500,
+    "maxQtyPerLine": 25,
+    "minRecipientsPerBatch": 2
+  },
+
+  "orderDefaults": {
+    "requireAdultSignature": true,
+    "adultSignatureNoteAttribute": "Adult Signature Required",
+    "childOrderTags": ["bulk-child"],
+    "parentOrderTags": ["bulk-parent"],
+    "batchTagPrefix": "batch-"
+  }
+}

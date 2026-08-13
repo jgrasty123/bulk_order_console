@@ -1,0 +1,6 @@
+recipient_id,first_name,last_name,company,address1,address2,city,state,zip,phone,email,sku,qty,gift_message,delivery_date
+R001,Dana,Whitfield,Crowley Fleck LLP,1200 Harrison Ave,Suite 400,Helena,MT,59601,4065551188,dwhitfield@example.com,BSKT-053,1,"Dana — thank you for an outstanding year. James at The BroBasket",2026-12-18
+R002,Marcus,Oyelaran,Redpoint Capital,88 Kearny St,Floor 12,San Francisco,CA,94108,4155550142,moyelaran@example.com,BSKT-016,1,"Marcus — great work this year. James at The BroBasket",2026-12-18
+R003,Priya,Raghunathan,,415 Elmwood Dr,,Grand Rapids,MI,49503,6165550119,praghunathan@example.com,BSKT-032,1,"Priya — happy holidays from all of us.",2026-12-19
+R004,Tom,Bergstrom,Halvorsen Group,2201 W Loop S,Suite 810,Houston,TX,77027,7135550163,tbergstrom@example.com,BSKT-045,1,"Tom — thanks for a great year.",2026-12-19
+R004,Tom,Bergstrom,Halvorsen Group,2201 W Loop S,Suite 810,Houston,TX,77027,7135550163,tbergstrom@example.com,BSKT-026,1,"Tom — thanks for a great year.",2026-12-19

@@ -1,0 +1,365 @@
+/* ==========================================================================
+   Bulk Order Console — Go-To Gifting LLC
+   Visual direction: a shipping manifest. Paper stock, ink, and a signal set.
+   Everything quiet except the status rail on the grid.
+   ========================================================================== */
+
+:root {
+  --paper:      #F4F5F3;
+  --paper-lift: #FBFCFA;
+  --ink:        #1A1D1A;
+  --ink-soft:   #5C625C;
+  --ink-faint:  #8D938C;
+  --rule:       #D6D8D2;
+  --rule-hard:  #B5B9B2;
+
+  --ok:    #2F6B3F;
+  --ok-bg: #E7EFE7;
+  --warn:    #A66A0B;
+  --warn-bg: #F6EEDC;
+  --stop:    #A1291F;
+  --stop-bg: #F6E4E1;
+
+  --font-ui:   'Instrument Sans', system-ui, -apple-system, sans-serif;
+  --font-data: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --gutter: 2.5rem;
+  --rail-w: 4.5rem;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.5;
+  font-feature-settings: 'ss01';
+}
+
+/* --- Type primitives ---------------------------------------------------- */
+
+.eyebrow {
+  font-family: var(--font-data);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin: 0;
+}
+
+h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0.25rem 0 0;
+}
+
+h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0 0 0.5rem;
+}
+
+.mono { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+
+/* --- Shell -------------------------------------------------------------- */
+
+.masthead {
+  border-bottom: 1px solid var(--rule-hard);
+  padding: 1.5rem var(--gutter) 1.25rem;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.masthead__id {
+  font-family: var(--font-data);
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+  text-align: right;
+}
+
+.masthead__id b { color: var(--ink); font-weight: 500; }
+
+main { padding: 0 var(--gutter) 6rem; max-width: 1400px; }
+
+/* --- Step tape ---------------------------------------------------------
+   The sequence is real: upload, validate, review, create. Numbering earns
+   its place here because order carries information.
+   ----------------------------------------------------------------------- */
+
+.tape {
+  display: flex;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 2rem;
+  overflow-x: auto;
+}
+
+.tape__step {
+  flex: 1 1 0;
+  min-width: 8rem;
+  padding: 0.875rem 1rem 0.75rem 0;
+  border-top: 2px solid var(--rule);
+  color: var(--ink-faint);
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.tape__step[data-state='active'] { border-top-color: var(--ink); color: var(--ink); }
+.tape__step[data-state='done']   { border-top-color: var(--ok);  color: var(--ok); }
+
+.tape__num {
+  font-family: var(--font-data);
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  display: block;
+}
+
+.tape__label { font-size: 0.875rem; font-weight: 500; }
+
+/* --- Notice bar (config warnings) --------------------------------------- */
+
+.notice {
+  display: flex;
+  gap: 0.875rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--rule-hard);
+  border-left: 3px solid var(--warn);
+  background: var(--warn-bg);
+  margin-bottom: 1.5rem;
+  font-size: 0.875rem;
+}
+
+.notice__code {
+  font-family: var(--font-data);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  color: var(--warn);
+  padding-top: 0.15rem;
+  white-space: nowrap;
+}
+
+.notice p { margin: 0; }
+.notice[hidden] { display: none; }
+
+/* --- Drop zone ---------------------------------------------------------- */
+
+.dropzone {
+  border: 1px dashed var(--rule-hard);
+  background: var(--paper-lift);
+  padding: 3rem 2rem;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.dropzone:hover,
+.dropzone:focus-visible,
+.dropzone[data-drag='true'] {
+  border-color: var(--ink);
+  background: #fff;
+}
+
+.dropzone__hint { color: var(--ink-soft); font-size: 0.875rem; margin: 0.5rem 0 0; }
+.dropzone__hint a { color: var(--ink); }
+
+/* --- Readout -----------------------------------------------------------
+   Signature element: the batch reads out like a scale. Four counts, one
+   line, monospaced so the digits sit still while you fix rows.
+   ----------------------------------------------------------------------- */
+
+.readout {
+  display: flex;
+  border: 1px solid var(--rule-hard);
+  background: var(--paper-lift);
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.readout__cell {
+  flex: 1 1 7rem;
+  padding: 0.875rem 1.125rem;
+  border-right: 1px solid var(--rule);
+}
+
+.readout__cell:last-child { border-right: 0; }
+
+.readout__num {
+  font-family: var(--font-data);
+  font-size: 1.75rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  display: block;
+  letter-spacing: -0.03em;
+}
+
+.readout__label {
+  font-family: var(--font-data);
+  font-size: 0.625rem;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.readout__cell[data-tone='stop'] .readout__num { color: var(--stop); }
+.readout__cell[data-tone='warn'] .readout__num { color: var(--warn); }
+.readout__cell[data-tone='ok']   .readout__num { color: var(--ok); }
+
+/* --- Controls ----------------------------------------------------------- */
+
+.controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+button {
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid var(--rule-hard);
+  background: var(--paper-lift);
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+button:hover:not(:disabled) { background: #fff; border-color: var(--ink); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+button.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+button.primary:hover:not(:disabled) { background: #000; }
+
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+.filter-chip[aria-pressed='true'] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+.spacer { flex: 1; }
+
+/* --- Grid --------------------------------------------------------------- */
+
+.grid-wrap { border: 1px solid var(--rule-hard); overflow-x: auto; background: var(--paper-lift); }
+
+table { border-collapse: collapse; width: 100%; font-size: 0.8125rem; }
+
+thead th {
+  position: sticky;
+  top: 0;
+  background: var(--paper);
+  border-bottom: 1px solid var(--rule-hard);
+  font-family: var(--font-data);
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  text-align: left;
+  padding: 0.625rem 0.625rem;
+  white-space: nowrap;
+  z-index: 2;
+}
+
+tbody td {
+  border-bottom: 1px solid var(--rule);
+  padding: 0;
+  vertical-align: top;
+}
+
+tbody tr[data-status='stop'] { background: var(--stop-bg); }
+tbody tr[data-status='warn'] { background: var(--warn-bg); }
+tbody tr[hidden] { display: none; }
+
+/* Status rail */
+.rail {
+  width: var(--rail-w);
+  padding: 0.5rem 0.625rem !important;
+  font-family: var(--font-data);
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  border-right: 1px solid var(--rule);
+  white-space: nowrap;
+}
+
+.rail__code { display: block; }
+tr[data-status='ok']   .rail__code { color: var(--ok); }
+tr[data-status='warn'] .rail__code { color: var(--warn); }
+tr[data-status='stop'] .rail__code { color: var(--stop); }
+
+.rail__line { color: var(--ink-faint); font-size: 0.625rem; }
+
+/* Editable cells */
+.cell {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-family: var(--font-ui);
+  color: inherit;
+  padding: 0.5rem 0.625rem;
+  min-width: 6rem;
+}
+
+.cell:focus { background: #fff; outline: 2px solid var(--ink); outline-offset: -2px; }
+.cell[data-flag='bad'] { box-shadow: inset 3px 0 0 var(--stop); }
+.cell[data-numeric] { font-family: var(--font-data); font-variant-numeric: tabular-nums; min-width: 4rem; }
+
+/* --- Issue ledger ------------------------------------------------------- */
+
+.ledger { margin-top: 2rem; }
+
+.ledger__list { list-style: none; padding: 0; margin: 0; border-top: 1px solid var(--rule); }
+
+.ledger__item {
+  display: flex;
+  gap: 1rem;
+  padding: 0.625rem 0;
+  border-bottom: 1px solid var(--rule);
+  font-size: 0.8125rem;
+  align-items: baseline;
+}
+
+.ledger__code {
+  font-family: var(--font-data);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  width: 3.5rem;
+  flex: none;
+}
+
+.ledger__item[data-sev='stop'] .ledger__code { color: var(--stop); }
+.ledger__item[data-sev='warn'] .ledger__code { color: var(--warn); }
+
+.ledger__count {
+  font-family: var(--font-data);
+  color: var(--ink-faint);
+  margin-left: auto;
+  flex: none;
+  font-size: 0.75rem;
+}
+
+.empty { color: var(--ink-faint); font-size: 0.875rem; padding: 2rem 0; }
+
+[hidden] { display: none !important; }
+
+/* --- Responsive --------------------------------------------------------- */
+
+@media (max-width: 720px) {
+  :root { --gutter: 1.25rem; }
+  .masthead { flex-direction: column; align-items: flex-start; gap: 0.75rem; }
+  .masthead__id { text-align: left; }
+  .readout__cell { flex-basis: 50%; border-bottom: 1px solid var(--rule); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}

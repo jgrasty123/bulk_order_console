@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Bulk Order Console — Go-To Gifting</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div>
+    <p class="eyebrow">Go-To Gifting LLC · Internal</p>
+    <h1>Bulk Order Console</h1>
+  </div>
+  <div class="masthead__id">
+    Batch <b id="batchId" class="mono">—</b><br>
+    Store <b id="storeLabel" class="mono">not connected</b>
+  </div>
+</header>
+
+<main>
+
+  <!-- The four stages are a real sequence, so they are numbered. -->
+  <nav class="tape" aria-label="Progress">
+    <div class="tape__step" id="step1" data-state="active">
+      <span class="tape__num">01</span><span class="tape__label">Upload sheet</span>
+    </div>
+    <div class="tape__step" id="step2">
+      <span class="tape__num">02</span><span class="tape__label">Check rows</span>
+    </div>
+    <div class="tape__step" id="step3">
+      <span class="tape__num">03</span><span class="tape__label">Fix and re-check</span>
+    </div>
+    <div class="tape__step" id="step4">
+      <span class="tape__num">04</span><span class="tape__label">Create orders</span>
+    </div>
+  </nav>
+
+  <div class="notice" id="screeningNotice">
+    <span class="notice__code">REVIEW</span>
+    <p><b>Destination screening is off.</b> Bulk orders are created through the Admin API, so they never pass through checkout — the age gate and state screening that run there do not run here. Add the confirmed state list to <span class="mono">config/shipping-rules.json</span> and set mode to <span class="mono">allowlist</span> before this is used on a live batch.</p>
+  </div>
+
+  <!-- Stage 1 -->
+  <section id="uploadStage">
+    <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Choose a CSV file or drop one here">
+      <h2>Drop a recipient sheet, or click to choose one</h2>
+      <p class="dropzone__hint">
+        One row per gift. Rows that share a <span class="mono">recipient_id</span> become a single order with several items.<br>
+        <a href="/templates/bulk-order-template.csv" download>Download the template</a>
+      </p>
+      <input type="file" id="fileInput" accept=".csv,text/csv" hidden>
+    </div>
+  </section>
+
+  <!-- Stage 2+ -->
+  <section id="reviewStage" hidden>
+
+    <div class="readout" id="readout">
+      <div class="readout__cell"><span class="readout__num mono" id="cRows">0</span><span class="readout__label">Rows</span></div>
+      <div class="readout__cell"><span class="readout__num mono" id="cOrders">0</span><span class="readout__label">Orders</span></div>
+      <div class="readout__cell" data-tone="stop"><span class="readout__num mono" id="cStop">0</span><span class="readout__label">Blocking</span></div>
+      <div class="readout__cell" data-tone="warn"><span class="readout__num mono" id="cWarn">0</span><span class="readout__label">Warnings</span></div>
+      <div class="readout__cell" data-tone="ok"><span class="readout__num mono" id="cUnits">0</span><span class="readout__label">Units</span></div>
+    </div>
+
+    <div class="controls">
+      <button class="filter-chip" id="fAll" aria-pressed="true">All rows</button>
+      <button class="filter-chip" id="fStop" aria-pressed="false">Blocking only</button>
+      <button class="filter-chip" id="fWarn" aria-pressed="false">Warnings only</button>
+      <button id="recheck">Re-check</button>
+      <span class="spacer"></span>
+      <button id="exportFixed">Download corrected sheet</button>
+      <button id="startOver">Start over</button>
+      <button class="primary" id="createOrders" disabled>Create orders</button>
+    </div>
+
+    <div class="grid-wrap">
+      <table id="grid">
+        <thead><tr id="gridHead"></tr></thead>
+        <tbody id="gridBody"></tbody>
+      </table>
+    </div>
+
+    <div class="ledger">
+      <h2>Issues</h2>
+      <ul class="ledger__list" id="ledger"></ul>
+      <p class="empty" id="ledgerEmpty" hidden>Every row checks out. Nothing to fix.</p>
+    </div>
+
+  </section>
+
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="/assets/app.js"></script>
+</body>
+</html>

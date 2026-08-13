@@ -1,0 +1,7 @@
+recipient_id,first_name,last_name,company,address1,address2,city,state,zip,phone,email,sku,qty,gift_message,delivery_date
+R001,Dana,Whitfield,Crowley Fleck LLP,1200 Harrison Ave,Suite 400,Helena,Montana,59601,4065551188,dwhitfield@example.com,BSKT-053,1,Thank you for an outstanding year.,2026-12-18
+R002,Marcus,,Redpoint Capital,PO Box 4417,,San Francisco,CA,94108,4155550142,moyelaran@example.com,BSKT-016,1,Great work this year.,2026-12-18
+R003,Priya,Raghunathan,,415 Elmwood Dr,,Grand Rapids,MI,4950,,praghunathan@example,BSKT-032,0,Happy holidays.,2025-01-02
+R004,Tom,Bergstrom,Halvorsen Group,2201 W Loop S,Suite 810,Houston,TX,77027,7135550163,tb@example.com,BSKT-045,2,Thanks for a great year.,2026-12-19
+R004,Tom,Bergstrom,Halvorsen Group,2201 W Loop S,Suite 810,Houston,TX,77027,7135550163,tb@example.com,BSKT-026,1,Thanks for a great year.,2026-12-19
+,Lena,Ostrowski,,88 Kearny St,Floor 12,Unit 9,ZZ,94108,4155550999,lena@example.com,,1,,
