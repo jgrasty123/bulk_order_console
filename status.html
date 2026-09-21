@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Your corporate order — The BroBasket</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/order.css">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="/"><span class="brand__mark">B</span><span class="brand__name">The BroBasket</span><span class="brand__sub">Corporate gifting</span></a>
+  <a class="bar__help" id="helpLink" href="#">Questions?</a>
+</header>
+<main class="page">
+  <section class="step">
+    <p class="muted" id="loading">Loading your order…</p>
+    <div id="view" hidden>
+      <p class="muted mono" id="sId"></p>
+      <h2 id="sHead"></h2>
+      <p id="sText"></p>
+      <div class="actions actions--left" id="payWrap" hidden><a class="btn btn--primary btn--big" id="payLink" href="#">Pay now</a></div>
+      <div class="summary" id="sSummary"></div>
+      <div class="sheet" style="margin-top:1.25rem"><table class="sheet__table sheet__table--read">
+        <thead><tr><th>Recipient</th><th>Destination</th><th>Gift</th><th>Order</th><th>Delivery</th></tr></thead>
+        <tbody id="sRows"></tbody></table></div>
+      <p class="fine" id="sUpdated"></p>
+    </div>
+  </section>
+</main>
+<script type="module" src="/assets/status.js"></script>
+</body>
+</html>

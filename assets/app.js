@@ -145,6 +145,8 @@ function downloadCsv(name, fields, data) {
 /* --- API + access gate --------------------------------------------------- */
 
 const KEY_STORE = 'boc.key';
+// Remembered on this device until the key changes (was per-tab).
+const keyStore = window.localStorage;
 
 function askForKey(message) {
   $('gateError').hidden = !message;
@@ -153,7 +155,7 @@ function askForKey(message) {
   if (!$('gate').open) $('gate').showModal();
   return new Promise(resolve => {
     $('gateForm').onsubmit = () => {
-      sessionStorage.setItem(KEY_STORE, $('gateKey').value);
+      keyStore.setItem(KEY_STORE, $('gateKey').value);
       resolve();
     };
   });
@@ -161,17 +163,17 @@ function askForKey(message) {
 
 async function api(path, { method = 'GET', body } = {}) {
   for (let attempt = 0; attempt < 3; attempt++) {
-    if (!sessionStorage.getItem(KEY_STORE)) await askForKey();
+    if (!keyStore.getItem(KEY_STORE)) await askForKey();
     const res = await fetch('/.netlify/functions/' + path, {
       method,
       headers: {
         'Content-Type': 'application/json',
-        'x-console-key': sessionStorage.getItem(KEY_STORE) || ''
+        'x-console-key': keyStore.getItem(KEY_STORE) || ''
       },
       body: body ? JSON.stringify(body) : undefined
     });
     if (res.status === 401) {
-      sessionStorage.removeItem(KEY_STORE);
+      keyStore.removeItem(KEY_STORE);
       await askForKey('That key was not accepted.');
       continue;
     }
@@ -527,13 +529,14 @@ function readOrderForm() {
   };
   const pricing = {
     discountPct: parseFloat($('discountPct').value || '0'),
-    shippingPerRecipient: parseFloat($('shippingEach').value)
+    // Blank = live carrier rate for each address.
+    shippingPerRecipient: $('shippingEach').value.trim() === '' ? null : parseFloat($('shippingEach').value)
   };
   const test = $('testMode').checked;
 
   let error = '';
   if (!test && !EMAIL_RE.test(buyer.email)) error = 'An invoice email is required.';
-  else if (!(pricing.shippingPerRecipient >= 0)) error = 'Enter shipping per recipient (0 is allowed).';
+  else if (pricing.shippingPerRecipient !== null && !(pricing.shippingPerRecipient >= 0)) error = 'Shipping must be 0 or more — or leave it blank for live rates.';
   else if (!(pricing.discountPct >= 0 && pricing.discountPct <= CONFIG.pricing.maxDiscountPct)) {
     error = `Discount must be between 0 and ${CONFIG.pricing.maxDiscountPct}%.`;
   }
@@ -554,7 +557,7 @@ async function getQuote() {
   show('quoteProgress');
   $('getQuote').disabled = true;
 
-  const CHUNK = 8;
+  const CHUNK = 5;
   let done = 0;
   try {
     for (let i = 0; i < recipients.length; i += CHUNK) {

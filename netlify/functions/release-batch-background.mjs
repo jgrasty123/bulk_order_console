@@ -91,7 +91,9 @@ function childOrder(batch, r) {
       city: r.city, provinceCode: r.state, zip: r.zip, countryCode: 'US',
       phone: r.phone || null
     },
-    shippingLines: [{ title: rules.pricing.shippingTitle, priceSet: zero }],
+    // The service the recipient was priced at (e.g. "UPS® Ground"), so ShipStation
+    // maps it the same way it maps a web order.
+    shippingLines: [{ title: (r.quote && r.quote.shippingTitle) || rules.pricing.shippingTitle, priceSet: zero }],
     financialStatus: 'PAID',
     customAttributes: attrs,
     note: noteParts.join('\n') || null,

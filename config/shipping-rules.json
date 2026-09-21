@@ -26,7 +26,17 @@
     "currencyCode": "USD",
     "shippingTitle": "Standard Shipping",
     "defaultShippingPerRecipient": null,
-    "maxDiscountPct": 30
+    "maxDiscountPct": 30,
+    "volumeDiscounts": [
+      {
+        "minRecipients": 20,
+        "percent": 10
+      }
+    ],
+    "preferredRates": [
+      "Ground"
+    ],
+    "_ratesNote": "Customers are charged the live carrier rate for each address. preferredRates picks the service by title match, in order; if none match, the cheapest available rate is used."
   },
   "orderDefaults": {
     "requireAdultSignature": true,
@@ -41,6 +51,21 @@
       "bulk-parent"
     ],
     "batchTagPrefix": "batch-",
-    "sourceName": "bulk-order-console"
+    "sourceName": "bulk-order-console",
+    "autoRelease": {
+      "customer": true,
+      "staff": false
+    },
+    "_autoReleaseNote": "customer: recipient orders are created automatically as soon as Shopify reports the invoice paid. staff: staff press Release."
+  },
+  "catalog": {
+    "variantQuery": "sku:BSKT-* AND product_status:active",
+    "_note": "Which products customers can pick on the corporate order page. Shopify product-variant search syntax."
+  },
+  "publicSite": {
+    "brandName": "The BroBasket",
+    "supportEmail": "james@thebevconnect.com",
+    "turnstileSiteKey": "",
+    "_turnstileNote": "Optional Cloudflare Turnstile bot check on submit. Set the site key here and TURNSTILE_SECRET_KEY in Netlify to turn it on."
   }
 }
