@@ -1,146 +1,191 @@
 # Bulk Order Console
 
-Internal tool for Go-To Gifting LLC. Takes a recipient spreadsheet for a
-corporate gift order and turns it into separate Shopify orders — one per
-recipient, each with its own destination address.
+Internal tool for Go-To Gifting LLC. Turns a corporate recipient spreadsheet
+into one invoice for the buyer and, once it is paid, one Shopify order per
+recipient. Replaces the Zest concierge workflow.
 
-Replaces the Zest concierge workflow.
+Live: https://coporate-order-portal.netlify.app/ · Store: `new-brobasket.myshopify.com`
 
 ---
 
-## Where this is
+## Flow
 
-**Built:** scaffold, CSV ingest, validation engine, editable review grid,
-issue ledger, Shopify SKU/stock lookup, destination-screening hook.
+```
+01 Upload sheet ─▶ 02 Check rows ─▶ 03 Quote ─▶ 04 Invoice + payment ─▶ 05 Release orders
+   CSV              structural +      Shopify prices     parent draft order      one $0 order per
+                    Shopify checks    each destination   emailed to buyer        recipient, after paid
+```
 
-**Not built yet:** order creation. The Create orders button is deliberately
-inert. See *Order model* below for what it will do.
+Nothing reaches Shopify as a write until step 04, and no recipient order
+exists until the parent invoice is paid.
 
 ---
 
 ## The sheet
 
-One row per gift, not one row per person. Rows that share a `recipient_id`
-collapse into a single order with several line items — which is the thing
-Zest could not do without a separate recipient list per product.
+One row per gift, not one row per person. Rows sharing a `recipient_id`
+become one order with several items; the same SKU twice in a group is summed.
 
 | Column | Required | Notes |
 |---|---|---|
-| `recipient_id` | no | Blank means this row is its own order |
+| `recipient_id` | no | Blank = this row is its own order |
 | `first_name`, `last_name` | yes | |
 | `company` | no | |
-| `address1`, `address2` | `address1` | No PO boxes, no APO/FPO |
+| `address1`, `address2` | `address1` | No PO boxes, no APO/FPO/DPO |
 | `city`, `state`, `zip` | yes | State accepts `Montana` or `MT` |
 | `phone` | no | Warned if missing — carriers want it on signature deliveries |
-| `email` | no | Used for shipment notifications |
-| `sku` | yes | Must resolve to a live Shopify variant |
+| `email` | no | Stored on the order; recipients are never emailed by Shopify |
+| `sku` | yes | Must resolve to a Shopify variant |
 | `qty` | yes | Whole number |
-| `gift_message` | no | Per recipient, not per line |
-| `delivery_date` | no | `YYYY-MM-DD`, cannot be in the past |
+| `gift_message` | no | One per order; first non-empty in a group wins |
+| `delivery_date` | no | `YYYY-MM-DD`, not in the past, one per order |
 
 `templates/bulk-order-template.csv` is the canonical example.
+`templates/test-broken-sample.csv` exercises most of the error codes.
 
 ---
 
 ## Order model
 
-Settled: **the customer pays one Shopify draft-order invoice for the batch
-total. Child orders go in at $0.**
+**The buyer pays one Shopify draft-order invoice. Child orders go in at $0.**
 
 ```
-        parent draft order                 child orders (one per recipient)
-   ┌──────────────────────────┐        ┌────────────────────────────────────┐
-   │ custom line item:        │        │ real variants, real destination    │
-   │ "Bulk batch B20261211-… "│        │ $0 line prices                     │
-   │ priced at the batch total│        │ tags: bulk-child, batch-…          │
-   │ tags: bulk-parent        │  ────▶ │ note attrs: gift message, delivery │
-   │ → invoice → customer pays│        │              date, adult signature │
-   └──────────────────────────┘        └────────────────────────────────────┘
-        carries the revenue                  carries the fulfillment
+   parent draft order                       child orders (one per recipient)
+ ┌─────────────────────────────────┐      ┌─────────────────────────────────────┐
+ │ custom lines, no inventory:     │      │ real variants, real destination     │
+ │   Corporate gift batch B…       │      │ $0 lines, financial status PAID     │
+ │   Shipping — N destinations     │ ───▶ │ tags: bulk-child, batch-B…          │
+ │   Sales tax — per destination   │ paid │ attrs: gift message, delivery date, │
+ │ taxExempt (tax is its own line) │      │        adult signature, parent #    │
+ │ tags: bulk-parent, batch-B…     │      │ no customer, no Shopify emails      │
+ └─────────────────────────────────┘      └─────────────────────────────────────┘
+        carries revenue + payment               carries fulfilment + inventory
 ```
 
-Why: revenue and payment land once (parent), inventory decrements once
-(children), and ShipStation pulls children by tag exactly like any other
-order. The parent's line item is a custom line, so it does not touch stock.
+Tax is calculated by Shopify at each recipient's address (`draftOrderCalculate`)
+and summed onto the parent. Shopify's own tax reports will therefore show it as
+one lump on the parent — **use the tax breakdown CSV for bookkeeping**; it has
+every destination's tax, rate and jurisdiction.
 
-**The consequence to plan around:** Shopify's tax reports will show tax as a
-lump on the parent rather than attributed per destination state. The tool
-therefore has to emit a per-destination tax CSV with every batch, for
-bookkeeping. Not built yet.
+Paid by check or wire: mark the parent draft paid in Shopify admin, then press
+**Check payment** in the console.
+
+---
+
+## Safety properties (all covered by tests)
+
+- **No duplicate orders.** Every child order carries `sourceIdentifier` = a hash
+  of batch + recipient. Release looks them up first, so a retry or Resume finds
+  existing orders instead of creating new ones.
+- **Ambiguous writes are never auto-retried.** If a connection drops or Shopify
+  returns 5xx on a write, the order may exist. The client records a failure
+  rather than retrying; Resume settles it by `sourceIdentifier`. (Retrying here
+  would ship a second gift.) Throttle rejections are retried — Shopify refuses
+  those before executing.
+- **One invoice per batch, one release at a time.** Claims are write-then-verify
+  in Netlify Blobs, so a double-click or two overlapping runs cannot both win.
+- **Release survives timeouts.** Progress is saved after every recipient; the
+  background function stops cleanly before its 15-minute limit and Resume
+  continues from there. Netlify's automatic retries are harmless.
+- **Access key on everything.** Every function refuses without `CONSOLE_KEY`,
+  and refuses entirely if it is not set on the deploy.
+
+---
+
+## Destination screening
+
+Bulk orders never pass through checkout, so checkout's destination rules do
+not run for them. The console applies them itself:
+
+`config/shipping-rules.json` → `screening.mode`:
+
+- `shopify-zones` (default) — reads the store's shipping zones live from the
+  named delivery profile (`"default"` = the General profile) and blocks any
+  state not in them. Same destinations as checkout.
+- `allowlist` — uses `shippableStates` instead.
+- `off` — no screening; the console shows a warning.
+
+Adult signature is set on every child order.
 
 ---
 
 ## Validation codes
 
-Blocking issues lock the create step. Warnings do not.
+Blocking issues lock the next step. Warnings do not.
 
 | Code | Sev | Meaning |
 |---|---|---|
 | E10–E13 | stop | Name, street, or city missing |
-| E14 | stop | State is not a US state |
-| E15 | stop | ZIP is not 5 or 5+4 |
+| E14 | stop | Not a US state |
+| E15 | stop | ZIP not 5 or 5+4 |
 | E16 | stop | SKU missing |
 | E17 | stop | Quantity not a whole number in range |
 | E18 | stop | Delivery date unreadable or past |
-| E19 | stop | PO box — carriers will not deliver alcohol |
-| E20 | stop | Destination state not on the shippable list |
-| E21 | stop | No Shopify product has this SKU |
+| E19 | stop | PO box |
+| E20 | stop | State not in the store's shipping zones |
+| E21 | stop | No Shopify variant has this SKU |
 | E22 | stop | Batch over the row limit |
-| E23 | stop | One `recipient_id` used on conflicting addresses |
-| E24 | stop | APO / FPO / DPO destination |
+| E23 | stop | One `recipient_id` on conflicting addresses |
+| E24 | stop | APO / FPO / DPO |
+| E25 | stop | Group has conflicting gift messages (only if `giftMessageConflict: "block"`) |
+| E26 | stop | Group has conflicting delivery dates |
 | E30 | stop | Gift message over the character limit |
-| W01 | warn | Same person and SKU as an earlier row — likely a duplicated paste |
-| W02 | warn | Email is malformed |
-| W03 | warn | Stock on hand is below the quantity asked for |
+| Q01 | stop | Shopify could not price this recipient (usually the address) |
+| W01 | warn | Same person, address and SKU as an earlier row |
+| W02 | warn | Email malformed |
+| W03 | warn | Batch needs more than is on hand |
+| W04 | warn | Product is draft or archived |
 | W06 | warn | No usable phone number |
+| W07 | warn | Group has different gift messages — first is used |
 
 ---
 
-## Compliance — read before going live
+## Setup
 
-`[REVIEW]` Orders created through the Admin API **never pass through Shopify
-checkout**. The age gate and destination-state screening that the storefronts
-rely on do not run for a bulk batch. That enforcement has to happen here, in
-validation, or it does not happen at all.
+Netlify → Site configuration → Environment variables (see `.env.example`):
 
-`config/shipping-rules.json` ships with `screening.mode` set to `off` and an
-empty state list, and the console shows a standing warning while that is true.
-The list needs attorney sign-off before this touches a real batch. Same open
-item as the brand portals.
+| Variable | Value |
+|---|---|
+| `CONSOLE_KEY` | Long random passphrase. **Set this first.** |
+| `SHOPIFY_SHOP` | `new-brobasket.myshopify.com` |
+| `SHOPIFY_ADMIN_TOKEN` | Offline Admin token (`shpat_…`) |
+| `SHOPIFY_API_VERSION` | `2026-07` |
 
-Adult signature is set on every child order by default
-(`orderDefaults.requireAdultSignature`).
+Token scopes: `read_products`, `read_inventory`, `read_shipping`,
+`read_draft_orders`, `write_draft_orders`, `read_orders`, `write_orders`.
+
+Shopify closed admin-created custom apps on 1 January 2026. Reuse a pre-2026
+custom app's static token if the store has one; otherwise a Dev Dashboard app's
+tokens expire roughly daily and need a refresh routine (not built).
+
+**First run:** tick **Test batch**. No invoice is created and child orders are
+Shopify test orders tagged `bulk-test`. Check one in admin, ShipStation, and on a
+packing slip before running a real batch.
 
 ---
 
-## Running it
+## Layout
 
 ```
-npm i -g netlify-cli      # once
-netlify dev               # serves the site and the functions together
+index.html, assets/          console (vanilla JS, PapaParse)
+config/shipping-rules.json   screening, limits, pricing, order attribute keys
+netlify/lib/                 Shopify client, auth gate, Blobs storage
+netlify/functions/
+  validate-batch.mjs         SKUs → variants, stock, destination screening
+  quote-batch.mjs            per-destination price, shipping, tax (≤8 per call)
+  create-batch.mjs           save batch, create parent invoice (or test batch)
+  send-invoice.mjs           email the invoice via Shopify
+  batch-status.mjs           load / refresh payment state / list batches
+  release-batch-background.mjs  create child orders (15-min background)
 ```
-
-Environment variables: see `.env.example`. Nothing works against Shopify
-without `SHOPIFY_SHOP` and `SHOPIFY_ADMIN_TOKEN`; the structural half of
-validation still runs without them and the ledger says so.
-
-**Token note.** Shopify closed admin-created custom apps on 1 January 2026.
-If `bro-basket.myshopify.com` already has a pre-2026 custom app, reuse its
-static `shpat_` token. If not, the app has to be created in the Dev Dashboard
-and its tokens expire roughly daily, which means building a refresh routine.
-Check which situation applies before anything else — it changes the auth work
-materially. `orderCreate` and the draft-order mutations additionally require
-an **offline** token; an online/per-user token will be rejected.
 
 ---
 
-## Next
+## Open
 
-1. Confirm the token situation above.
-2. Per-recipient draft orders → sum → parent invoice.
-3. Background function for the create loop (15 min ceiling; a plain function
-   times out at 10s and 300 orders will not fit).
-4. Idempotency: hash each row into an order metafield, check before creating,
-   so a retry after a partial failure cannot double-charge or double-ship.
-5. Per-destination tax export.
-6. Then the customer-facing front door.
+1. Match `giftMessageAttributeKey` / `deliveryDateAttributeKey` to what the
+   BroBasket storefront writes, so ShipStation and packing slips read bulk
+   orders the same way as web orders.
+2. Confirm the delivery profile used for screening is the one alcohol ships under.
+3. Token refresh routine, if the store has no pre-2026 custom app.
+4. Customer-facing front door (Phase 2).

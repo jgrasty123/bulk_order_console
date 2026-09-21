@@ -363,3 +363,170 @@ tr[data-status='stop'] .rail__code { color: var(--stop); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }
+
+/* ==========================================================================
+   Order pipeline — quote, invoice, release
+   ========================================================================== */
+
+.muted { color: var(--ink-soft); }
+.small { font-size: 0.75rem; }
+
+.masthead__right { display: flex; align-items: flex-end; gap: 1rem; }
+
+.notice[data-tone='info'] { border-left-color: var(--ink); background: var(--paper-lift); }
+.notice[data-tone='info'] .notice__code { color: var(--ink-soft); }
+.notice[data-tone='stop'] { border-left-color: var(--stop); background: var(--stop-bg); }
+.notice[data-tone='stop'] .notice__code { color: var(--stop); }
+
+.grid-wrap--tall { max-height: 32rem; overflow: auto; }
+
+.panel {
+  margin-top: 2.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--rule-hard);
+}
+
+.panel > h2 { margin-bottom: 0.25rem; }
+
+/* --- Form --------------------------------------------------------------- */
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 0.875rem 1.25rem;
+  margin: 1.25rem 0 1rem;
+}
+
+.field { display: flex; flex-direction: column; gap: 0.3rem; }
+
+.field > span {
+  font-family: var(--font-data);
+  font-size: 0.625rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.field em { font-style: normal; color: var(--warn); text-transform: none; letter-spacing: 0; }
+
+.field input {
+  font: inherit;
+  font-size: 0.875rem;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--rule-hard);
+  background: var(--paper-lift);
+  color: var(--ink);
+}
+
+.field input:focus { outline: 2px solid var(--ink); outline-offset: -1px; background: #fff; }
+.field input.mono { font-family: var(--font-data); }
+
+.check {
+  display: flex;
+  gap: 0.625rem;
+  align-items: flex-start;
+  font-size: 0.8125rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--rule);
+  background: var(--paper-lift);
+  max-width: 48rem;
+}
+
+.check input { margin-top: 0.2rem; accent-color: var(--ink); }
+
+.form-error {
+  color: var(--stop);
+  font-size: 0.8125rem;
+  margin: 0.75rem 0 0;
+}
+
+.controls--end { justify-content: flex-end; margin-top: 1rem; }
+
+a.button {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid var(--rule-hard);
+  background: var(--paper-lift);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+a.button:hover { background: #fff; border-color: var(--ink); }
+
+/* --- Progress ------------------------------------------------------------ */
+
+.progress {
+  position: relative;
+  height: 2rem;
+  border: 1px solid var(--rule-hard);
+  background: var(--paper-lift);
+  margin: 1rem 0;
+  overflow: hidden;
+}
+
+.progress__bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: var(--ok-bg);
+  border-right: 2px solid var(--ok);
+  transition: width 0.3s;
+}
+
+.progress__label {
+  position: relative;
+  display: block;
+  line-height: 2rem;
+  padding: 0 0.75rem;
+  font-size: 0.75rem;
+}
+
+/* --- Batch -------------------------------------------------------------- */
+
+.batch-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; }
+.batch-head h2 { font-size: 1.25rem; margin: 0.15rem 0 0; }
+
+.status-pill {
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.35rem 0.625rem;
+  border: 1px solid var(--rule-hard);
+  background: var(--paper-lift);
+}
+
+.status-pill[data-tone='ok']   { color: var(--ok);   border-color: var(--ok);   background: var(--ok-bg); }
+.status-pill[data-tone='warn'] { color: var(--warn); border-color: var(--warn); background: var(--warn-bg); }
+.status-pill[data-tone='stop'] { color: var(--stop); border-color: var(--stop); background: var(--stop-bg); }
+
+.invoice-box {
+  border: 1px solid var(--rule-hard);
+  background: var(--paper-lift);
+  padding: 1rem 1.125rem 0.25rem;
+  margin: 1rem 0;
+}
+
+.invoice-box p { margin: 0 0 0.75rem; }
+
+td.plain { padding: 0.5rem 0.625rem; }
+
+.log { margin-top: 1.5rem; font-size: 0.8125rem; }
+.log summary { cursor: pointer; color: var(--ink-soft); }
+.log ol { font-size: 0.6875rem; color: var(--ink-soft); padding-left: 1.25rem; }
+
+/* --- Modals ------------------------------------------------------------- */
+
+.modal {
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  padding: 1.75rem;
+  width: min(26rem, calc(100vw - 2rem));
+}
+
+.modal--wide { width: min(56rem, calc(100vw - 2rem)); }
+.modal::backdrop { background: rgba(26, 29, 26, 0.55); }
+.modal h2 { margin: 0.25rem 0 0.5rem; }
+.modal .field { margin: 1rem 0 0.5rem; }
+.modal__actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }

@@ -10,12 +10,7 @@
 # Active development: never let a stale app.js survive a structural change.
 # Tighten these once the tool stops changing weekly.
 [[headers]]
-  for = "/assets/app.js"
-  [headers.values]
-    Cache-Control = "max-age=0, must-revalidate"
-
-[[headers]]
-  for = "/assets/styles.css"
+  for = "/assets/*"
   [headers.values]
     Cache-Control = "max-age=0, must-revalidate"
 
@@ -30,3 +25,4 @@
     X-Robots-Tag = "noindex, nofollow"
     X-Frame-Options = "DENY"
     Referrer-Policy = "same-origin"
+    X-Content-Type-Options = "nosniff"

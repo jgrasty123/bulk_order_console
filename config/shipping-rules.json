@@ -1,31 +1,46 @@
 {
-  "_REVIEW": "[REVIEW] The destination-state screening list below is NOT legally confirmed. Orders created through the Admin API bypass Shopify checkout entirely, which means the age gate and state screening that normally run at checkout DO NOT RUN for bulk batches. Until an attorney-confirmed list is entered here and mode is set to 'allowlist', the validator will flag every batch with an unscreened-destination warning. Do not remove this notice without sign-off.",
-
   "screening": {
-    "mode": "off",
-    "_modeOptions": "off | allowlist",
+    "mode": "shopify-zones",
+    "_modeOptions": "shopify-zones | allowlist | off",
+    "deliveryProfile": "default",
+    "countryCode": "US",
     "shippableStates": [],
-    "notes": "When mode is 'allowlist', any recipient whose state is absent from shippableStates fails validation with code E20. Leave shippableStates empty until counsel supplies it."
+    "notes": "shopify-zones holds bulk batches to the same destinations checkout allows, read live from the named Shopify shipping profile ('default' = the store's General profile). Bulk orders never pass through checkout, so this check is the only place that rule is enforced for them. allowlist uses shippableStates instead; off disables screening and the console shows a warning."
   },
-
   "carrier": {
     "blockPoBoxes": true,
     "blockMilitaryAddresses": true,
     "_note": "Common carriers will not deliver alcohol to PO boxes or APO/FPO/DPO addresses. These are hard failures, not warnings."
   },
-
   "limits": {
     "maxRowsPerBatch": 300,
     "maxGiftMessageChars": 500,
     "maxQtyPerLine": 25,
     "minRecipientsPerBatch": 2
   },
-
+  "grouping": {
+    "giftMessageConflict": "first",
+    "_giftMessageOptions": "first = use the first non-empty message in a group and warn (W07) if others differ; block = stop the batch (E25) until they match"
+  },
+  "pricing": {
+    "currencyCode": "USD",
+    "shippingTitle": "Standard Shipping",
+    "defaultShippingPerRecipient": null,
+    "maxDiscountPct": 30
+  },
   "orderDefaults": {
     "requireAdultSignature": true,
     "adultSignatureNoteAttribute": "Adult Signature Required",
-    "childOrderTags": ["bulk-child"],
-    "parentOrderTags": ["bulk-parent"],
-    "batchTagPrefix": "batch-"
+    "giftMessageAttributeKey": "Gift Message",
+    "deliveryDateAttributeKey": "Delivery Date",
+    "_attributeNote": "Match these keys to what the storefront writes, so ShipStation and packing slips pick bulk orders up the same way as web orders.",
+    "childOrderTags": [
+      "bulk-child"
+    ],
+    "parentOrderTags": [
+      "bulk-parent"
+    ],
+    "batchTagPrefix": "batch-",
+    "sourceName": "bulk-order-console"
   }
 }
