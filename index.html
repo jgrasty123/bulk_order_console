@@ -12,41 +12,59 @@
 </head>
 <body>
 
+<!-- Access gate. Every server action checks this key; the page is public. -->
+<dialog id="gate" class="modal">
+  <form method="dialog" id="gateForm">
+    <p class="eyebrow">Go-To Gifting LLC · Internal</p>
+    <h2>Console key</h2>
+    <p class="muted">This console creates real Shopify orders. Enter the key to continue.</p>
+    <label class="field"><span>Key</span><input type="password" id="gateKey" autocomplete="current-password" required></label>
+    <p class="form-error" id="gateError" hidden></p>
+    <div class="modal__actions"><button class="primary" type="submit">Unlock</button></div>
+  </form>
+</dialog>
+
+<dialog id="batchesDialog" class="modal modal--wide">
+  <div>
+    <p class="eyebrow">Saved batches</p>
+    <h2>Open a batch</h2>
+    <div class="grid-wrap"><table><thead><tr><th>Batch</th><th>Status</th><th>Buyer</th><th>Recipients</th><th>Total</th><th>Created</th><th></th></tr></thead>
+      <tbody id="batchesBody"></tbody></table></div>
+    <p class="empty" id="batchesEmpty" hidden>No batches yet.</p>
+    <div class="modal__actions"><button type="button" id="batchesClose">Close</button></div>
+  </div>
+</dialog>
+
 <header class="masthead">
   <div>
     <p class="eyebrow">Go-To Gifting LLC · Internal</p>
     <h1>Bulk Order Console</h1>
   </div>
-  <div class="masthead__id">
-    Batch <b id="batchId" class="mono">—</b><br>
-    Store <b id="storeLabel" class="mono">not connected</b>
+  <div class="masthead__right">
+    <div class="masthead__id">
+      Batch <b id="batchId" class="mono">—</b><br>
+      Store <b id="storeLabel" class="mono">not connected</b>
+    </div>
+    <button id="openBatches" type="button">Saved batches</button>
   </div>
 </header>
 
 <main>
 
-  <!-- The four stages are a real sequence, so they are numbered. -->
   <nav class="tape" aria-label="Progress">
-    <div class="tape__step" id="step1" data-state="active">
-      <span class="tape__num">01</span><span class="tape__label">Upload sheet</span>
-    </div>
-    <div class="tape__step" id="step2">
-      <span class="tape__num">02</span><span class="tape__label">Check rows</span>
-    </div>
-    <div class="tape__step" id="step3">
-      <span class="tape__num">03</span><span class="tape__label">Fix and re-check</span>
-    </div>
-    <div class="tape__step" id="step4">
-      <span class="tape__num">04</span><span class="tape__label">Create orders</span>
-    </div>
+    <div class="tape__step" id="step1" data-state="active"><span class="tape__num">01</span><span class="tape__label">Upload sheet</span></div>
+    <div class="tape__step" id="step2"><span class="tape__num">02</span><span class="tape__label">Check rows</span></div>
+    <div class="tape__step" id="step3"><span class="tape__num">03</span><span class="tape__label">Quote</span></div>
+    <div class="tape__step" id="step4"><span class="tape__num">04</span><span class="tape__label">Invoice and payment</span></div>
+    <div class="tape__step" id="step5"><span class="tape__num">05</span><span class="tape__label">Release orders</span></div>
   </nav>
 
-  <div class="notice" id="screeningNotice">
-    <span class="notice__code">REVIEW</span>
-    <p><b>Destination screening is off.</b> Bulk orders are created through the Admin API, so they never pass through checkout — the age gate and state screening that run there do not run here. Add the confirmed state list to <span class="mono">config/shipping-rules.json</span> and set mode to <span class="mono">allowlist</span> before this is used on a live batch.</p>
+  <div class="notice" id="screeningNotice" hidden>
+    <span class="notice__code" id="screeningCode">SCREEN</span>
+    <p id="screeningText"></p>
   </div>
 
-  <!-- Stage 1 -->
+  <!-- 01 -->
   <section id="uploadStage">
     <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Choose a CSV file or drop one here">
       <h2>Drop a recipient sheet, or click to choose one</h2>
@@ -58,10 +76,9 @@
     </div>
   </section>
 
-  <!-- Stage 2+ -->
+  <!-- 02 -->
   <section id="reviewStage" hidden>
-
-    <div class="readout" id="readout">
+    <div class="readout">
       <div class="readout__cell"><span class="readout__num mono" id="cRows">0</span><span class="readout__label">Rows</span></div>
       <div class="readout__cell"><span class="readout__num mono" id="cOrders">0</span><span class="readout__label">Orders</span></div>
       <div class="readout__cell" data-tone="stop"><span class="readout__num mono" id="cStop">0</span><span class="readout__label">Blocking</span></div>
@@ -77,14 +94,10 @@
       <span class="spacer"></span>
       <button id="exportFixed">Download corrected sheet</button>
       <button id="startOver">Start over</button>
-      <button class="primary" id="createOrders" disabled>Create orders</button>
     </div>
 
-    <div class="grid-wrap">
-      <table id="grid">
-        <thead><tr id="gridHead"></tr></thead>
-        <tbody id="gridBody"></tbody>
-      </table>
+    <div class="grid-wrap grid-wrap--tall">
+      <table id="grid"><thead><tr id="gridHead"></tr></thead><tbody id="gridBody"></tbody></table>
     </div>
 
     <div class="ledger">
@@ -92,7 +105,84 @@
       <ul class="ledger__list" id="ledger"></ul>
       <p class="empty" id="ledgerEmpty" hidden>Every row checks out. Nothing to fix.</p>
     </div>
+  </section>
 
+  <!-- 03 -->
+  <section id="orderStage" class="panel" hidden>
+    <h2>Order details</h2>
+    <p class="muted">Prices come from Shopify. Tax is calculated at each recipient's own address.</p>
+    <div class="form-grid">
+      <label class="field"><span>Buyer name</span><input id="buyerName" autocomplete="off"></label>
+      <label class="field"><span>Company</span><input id="buyerCompany" autocomplete="off"></label>
+      <label class="field"><span>Invoice email <em>required</em></span><input id="buyerEmail" type="email" autocomplete="off"></label>
+      <label class="field"><span>Phone</span><input id="buyerPhone" autocomplete="off"></label>
+      <label class="field"><span>PO number</span><input id="buyerPo" autocomplete="off"></label>
+      <label class="field"><span>Discount %</span><input id="discountPct" class="mono" inputmode="decimal" value="0"></label>
+      <label class="field"><span>Shipping per recipient ($) <em>required</em></span><input id="shippingEach" class="mono" inputmode="decimal"></label>
+    </div>
+    <label class="check"><input type="checkbox" id="testMode"> <span><b>Test batch.</b> No invoice; child orders are created as Shopify test orders tagged <span class="mono">bulk-test</span>. Use this for the first run.</span></label>
+    <p class="form-error" id="orderError" hidden></p>
+    <div class="controls controls--end"><button class="primary" id="getQuote" disabled>Get quote</button></div>
+  </section>
+
+  <section id="quoteStage" class="panel" hidden>
+    <div class="progress" id="quoteProgress" hidden><div class="progress__bar" id="quoteBar"></div><span class="progress__label mono" id="quoteLabel"></span></div>
+
+    <div id="quoteResult" hidden>
+      <div class="readout">
+        <div class="readout__cell"><span class="readout__num mono" id="qRecipients">0</span><span class="readout__label">Recipients</span></div>
+        <div class="readout__cell"><span class="readout__num mono" id="qMerch">0</span><span class="readout__label">Gifts</span></div>
+        <div class="readout__cell"><span class="readout__num mono" id="qDiscount">0</span><span class="readout__label">Discount</span></div>
+        <div class="readout__cell"><span class="readout__num mono" id="qShipping">0</span><span class="readout__label">Shipping</span></div>
+        <div class="readout__cell"><span class="readout__num mono" id="qTax">0</span><span class="readout__label">Tax</span></div>
+        <div class="readout__cell" data-tone="ok"><span class="readout__num mono" id="qTotal">0</span><span class="readout__label">Invoice total</span></div>
+      </div>
+      <ul class="ledger__list" id="quoteErrors"></ul>
+      <div class="controls">
+        <button id="taxCsvQuote">Download tax breakdown</button>
+        <span class="spacer"></span>
+        <button class="primary" id="createBatch" disabled>Create invoice</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 04 + 05 -->
+  <section id="batchStage" class="panel" hidden>
+    <div class="batch-head">
+      <div>
+        <p class="eyebrow">Batch</p>
+        <h2 class="mono" id="bId">—</h2>
+      </div>
+      <span class="status-pill mono" id="bStatus">—</span>
+    </div>
+    <p id="bSummary" class="muted"></p>
+
+    <div id="bInvoice" class="invoice-box" hidden>
+      <p>Parent invoice <b class="mono" id="bDraft"></b> for <b class="mono" id="bTotal"></b>
+        <span id="bSent" class="muted"></span></p>
+      <div class="controls">
+        <a id="bInvoiceLink" class="button" target="_blank" rel="noopener">Open invoice</a>
+        <button id="sendInvoice">Email invoice to buyer</button>
+        <button id="checkPayment">Check payment</button>
+      </div>
+      <p class="muted small">Paid by check or wire? Mark the draft order as paid in Shopify admin, then press Check payment.</p>
+    </div>
+
+    <div class="progress" id="releaseProgress" hidden><div class="progress__bar" id="releaseBar"></div><span class="progress__label mono" id="releaseLabel"></span></div>
+
+    <div class="controls">
+      <button id="taxCsvBatch">Download tax breakdown</button>
+      <button id="resultsCsv">Download results</button>
+      <span class="spacer"></span>
+      <button class="primary" id="releaseBtn" hidden>Release orders</button>
+    </div>
+
+    <div class="grid-wrap grid-wrap--tall">
+      <table><thead><tr><th class="rail">Order</th><th>Recipient</th><th>Destination</th><th>Items</th><th>Total</th><th>Result</th></tr></thead>
+        <tbody id="resultsBody"></tbody></table>
+    </div>
+
+    <details class="log"><summary>Activity log</summary><ol id="bLog" class="mono"></ol></details>
   </section>
 
 </main>

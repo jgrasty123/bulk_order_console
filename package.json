@@ -1,0 +1,15 @@
+{
+  "name": "bulk-order-console",
+  "private": true,
+  "type": "module",
+  "description": "Internal bulk corporate gift order console — Go-To Gifting LLC",
+  "dependencies": {
+    "@netlify/blobs": "^11.1.0"
+  },
+  "scripts": {
+    "test": "esbuild netlify/functions/*.mjs --bundle --platform=node --format=esm --target=node20 --outdir=tests/.build --log-level=warning && node tests/e2e.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.23.0"
+  }
+}
