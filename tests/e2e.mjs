@@ -18,6 +18,8 @@ process.env.NETLIFY_BLOBS_CONTEXT = Buffer.from(JSON.stringify({
 process.env.CONSOLE_KEY = 'secret-key';
 process.env.SHOPIFY_SHOP = 'new-brobasket.myshopify.com';
 process.env.SHOPIFY_ADMIN_TOKEN = 'shpat_test';
+process.env.SHOPIFY_API_SECRET = 'shpss_test_secret';
+process.env.URL = 'https://console.test';
 
 // ---------- mock Shopify ----------
 const V = {
@@ -43,6 +45,13 @@ function handle(query, vars) {
       inventoryQuantity: V[s].qty, inventoryItem: { tracked: true },
       product: { id: 'gid://shopify/Product/' + s, title: V[s].title, status: V[s].status } } })) } };
   }
+  if (query.includes('query Catalog')) {
+    return { productVariants: { edges: Object.entries(V).map(([sku, v]) => ({ node: {
+      id: v.id, sku, title: 'Default Title', price: v.price, availableForSale: true,
+      product: { id: 'gid://shopify/Product/' + sku, title: v.title, status: v.status, handle: sku.toLowerCase(),
+        featuredMedia: { preview: { image: { url: 'https://cdn.test/' + sku + '.jpg' } } } } } })),
+      pageInfo: { hasNextPage: false, endCursor: null } } };
+  }
   if (query.includes('ShippingZones')) {
     return { deliveryProfiles: { edges: [{ node: { name: 'General Profile', default: true, profileLocationGroups: [{
       locationGroupZones: { edges: [{ node: { zone: { name: 'Domestic', countries: [{ code: { countryCode: 'US' },
@@ -56,11 +65,23 @@ function handle(query, vars) {
     const gross = i.lineItems.reduce((n, l) => n + cents(byId[l.variantId].price) * l.quantity, 0);
     const pct = i.appliedDiscount ? i.appliedDiscount.value : 0;
     const discount = Math.round(gross * pct / 100);
-    const ship = cents(i.shippingLine.priceWithCurrency.amount);
+    const units = i.lineItems.reduce((n, l) => n + l.quantity, 0);
+    const RATES = [
+      { handle: 'h-ground-' + i.shippingAddress.provinceCode + '-' + units, title: 'UPS® Ground', price: { amount: amt(1500 + 400 * units) } },
+      { handle: 'h-nda-' + i.shippingAddress.provinceCode + '-' + units, title: 'UPS Next Day Air®', price: { amount: amt(5900 + 900 * units) } }
+    ];
+    S.calcCalls = (S.calcCalls || 0) + 1;
+    let ship = 0;
+    if (i.shippingLine && i.shippingLine.priceWithCurrency) ship = cents(i.shippingLine.priceWithCurrency.amount);
+    else if (i.shippingLine && i.shippingLine.shippingRateHandle) {
+      const hit = RATES.find(r => r.handle === i.shippingLine.shippingRateHandle);
+      if (!hit) return { draftOrderCalculate: { calculatedDraftOrder: null, userErrors: [{ field: ['shippingLine'], message: 'Shipping rate expired' }] } };
+      ship = cents(hit.price.amount);
+    }
     const rate = TAX[i.shippingAddress.provinceCode] ?? 0.06;
     const tax = Math.round((gross - discount) * rate);
     return { draftOrderCalculate: { userErrors: [], calculatedDraftOrder: {
-      currencyCode: 'USD', totalLineItemsPriceSet: bag(gross), totalDiscountsSet: bag(discount),
+      currencyCode: 'USD', availableShippingRates: RATES, totalLineItemsPriceSet: bag(gross), totalDiscountsSet: bag(discount),
       subtotalPriceSet: bag(gross - discount), totalShippingPriceSet: bag(ship), totalTaxSet: bag(tax),
       totalPriceSet: bag(gross - discount + ship + tax),
       taxLines: [{ title: i.shippingAddress.provinceCode + ' State Tax', rate, priceSet: bag(tax) }] } } };
@@ -75,6 +96,7 @@ function handle(query, vars) {
   }
   if (query.includes('draftOrderInvoiceSend')) {
     S.drafts[vars.id].sent = true;
+    S.drafts[vars.id].email = vars.email || null;
     return { draftOrderInvoiceSend: { userErrors: [], draftOrder: { id: vars.id, invoiceSentAt: new Date().toISOString() } } };
   }
   if (query.includes('ParentStatus')) {
@@ -100,6 +122,14 @@ function handle(query, vars) {
 
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (url, init) => {
+  if (String(url).startsWith('https://console.test/.netlify/functions/')) {
+    // Netlify answers a background call with 202 at once and runs it later.
+    const name = String(url).split('/').pop();
+    const h = (await import(`./.build/${name}.js`)).default;
+    S.bgRuns = (S.bgRuns || []);
+    S.bgRuns.push(h(new Request(String(url), init)));
+    return new Response(null, { status: 202 });
+  }
   if (String(url).includes('myshopify.com/admin/api')) {
     assert.equal(init.headers['X-Shopify-Access-Token'], 'shpat_test');
     const { query, variables } = JSON.parse(init.body);
@@ -168,7 +198,7 @@ const qb = q.data.quotes.Ben.cents;
 ok(qb.gross === 31995 + 2 * 16995, 'Ben: two SKUs, qty 2, summed correctly');
 const bad = await call('quote-batch', { body: { recipients: [mk('Zed', 'X', 'CA', '90001', [L('BSKT-053')], { address1: 'BADADDR' })], pricing } });
 ok(bad.data.quotes.Zed.error === 'Address is not valid', 'Shopify address rejection surfaces per recipient');
-ok((await call('quote-batch', { body: { recipients: Array(9).fill(recips[0]), pricing } })).status === 400, 'chunks over 8 are refused');
+ok((await call('quote-batch', { body: { recipients: Array(6).fill(recips[0]), pricing } })).status === 400, 'chunks over 5 are refused');
 ok((await call('quote-batch', { body: { recipients: recips, pricing: { discountPct: 60, shippingPerRecipient: 0 } } })).status === 400, 'discount above the cap is refused');
 
 const withQuotes = recips.map(r => ({ ...r, quote: q.data.quotes[r.key] }));
@@ -258,6 +288,95 @@ ok(testOrders.every(o => o.input.test === true && o.input.tags.includes('bulk-te
 console.log('\nBatch list');
 const list = await call('batch-status', { method: 'GET' });
 ok(list.data.batches.length === 3 && list.data.batches.some(x => x.id === 'B20260921-INV1'), 'saved batches listed');
+
+
+// ======================================================================
+console.log('\nStaff quote with live rates (shipping left blank)');
+const live = await call('quote-batch', { body: { recipients: [recips[0]], pricing: { discountPct: 0, shippingPerRecipient: '' } } });
+ok(live.data.quotes.Ava.shippingTitle === 'UPS® Ground' && live.data.quotes.Ava.cents.shipping === 1900, 'blank shipping = live UPS Ground rate for that address');
+
+console.log('\nPublic: catalog');
+const pub = async (name, { method = 'POST', body, qs = '', headers = {} } = {}) => {
+  const f = await fn(name);
+  const res = await f(new Request('https://console.test/.netlify/functions/' + name + qs, {
+    method, headers: { 'Content-Type': 'application/json', 'x-nf-client-connection-ip': '203.0.113.9', ...headers },
+    body: body ? (typeof body === 'string' ? body : JSON.stringify(body)) : undefined }));
+  return { status: res.status, data: await res.json().catch(() => null) };
+};
+const cat = await pub('order-catalog', { method: 'GET' });
+ok(cat.status === 200 && cat.data.items.length === Object.keys(V).length, 'catalog lists the corporate products, no key needed');
+ok(!('variantId' in cat.data.items[0]), 'catalog does not expose internal variant ids');
+
+const person = (i, state = 'CA', zip = '90001') => ({
+  key: 'k' + i, firstName: 'Pat' + i, lastName: 'Lee', company: 'Acme', address1: `${100 + i} Main St`, address2: '',
+  city: 'Town', state, zip, phone: '8055550100', email: '', giftMessage: `Thanks Pat${i}`, lines: [{ sku: 'BSKT-053', qty: 1 }] });
+
+console.log('\nPublic: quote');
+const small = [person(1), person(2, 'TX', '73301')];
+let pq = await pub('order-quote', { body: { recipients: small, batchSize: 2 } });
+ok(pq.status === 200 && pq.data.discountPct === 0, 'under 20 recipients: no discount');
+ok(pq.data.quotes.k1.shippingTitle === 'UPS® Ground' && pq.data.quotes.k1.sig, 'live Ground rate, quote signed');
+ok(pq.data.quotes.k1.cents.shipping === 1900, 'rate taken from Shopify, applied in a second pricing pass');
+const po = await pub('order-quote', { body: { recipients: [{ ...person(3), address1: 'PO Box 12' }], batchSize: 2 } });
+ok(/PO box/.test(po.data.quotes.k3.error), 'server re-runs the rules: PO box rejected even if the page is bypassed');
+const fake = await pub('order-quote', { body: { recipients: [{ ...person(4), lines: [{ sku: 'SECRET-ITEM', qty: 1 }] }], batchSize: 2 } });
+ok(/isn’t available/.test(fake.data.quotes.k4.error), 'only catalog products can be quoted');
+const big = await pub('order-quote', { body: { recipients: [person(5)], batchSize: 25 } });
+ok(big.data.discountPct === 10 && big.data.quotes.k5.cents.discount === Math.round(24995 * 0.10), '20+ recipients: 10% off');
+
+console.log('\nPublic: submit');
+const withQ = small.map(r => ({ ...r, quote: pq.data.quotes[r.key] }));
+const buyerP = { name: 'Jo Buyer', company: 'Acme', email: 'jo@acme.test', dob: '1980-05-01' };
+ok((await pub('order-submit', { body: { buyer: { ...buyerP, dob: '2010-01-01' }, recipients: withQ } })).status === 400, 'under-21 buyer refused');
+const tampered = JSON.parse(JSON.stringify(withQ)); tampered[0].quote.cents.total = 100; tampered[0].quote.cents.merchandise = 100;
+const tp = await pub('order-submit', { body: { buyer: buyerP, recipients: tampered } });
+ok(tp.status === 400 && tp.data.error === 'bad_quote', 'edited price is rejected');
+const moved = JSON.parse(JSON.stringify(withQ)); moved[1].state = 'CA'; moved[1].zip = '90001';
+ok((await pub('order-submit', { body: { buyer: buyerP, recipients: moved } })).data.error === 'bad_quote', 'changing an address after pricing is rejected');
+const cheat = [person(5)].map(r => ({ ...r, quote: big.data.quotes.k5 })).concat([{ ...person(6), quote: big.data.quotes.k5 }]);
+ok((await pub('order-submit', { body: { buyer: buyerP, recipients: cheat } })).data.error === 'bad_quote', 'a 20+ discount cannot be used on a smaller order');
+
+const draftsBefore = Object.keys(S.drafts).length;
+const sub = await pub('order-submit', { body: { buyer: buyerP, recipients: withQ } });
+ok(sub.status === 200 && sub.data.invoiceUrl && sub.data.statusUrl, 'valid order: invoice created, checkout link returned');
+const pd = Object.values(S.drafts)[draftsBefore];
+ok(pd.input.tags.includes('bulk-source-customer') && pd.input.email === 'jo@acme.test', 'parent tagged as a customer order, billed to the buyer');
+ok(pd.sent && pd.email && pd.email.customMessage.includes(sub.data.statusUrl), 'invoice email carries the status link');
+
+console.log('\nPublic: status page');
+const su = new URL(sub.data.statusUrl);
+const sb = su.searchParams.get("b"), stok = su.searchParams.get("t");
+ok((await pub('order-status', { method: 'GET', qs: `?b=${sb}&t=wrong` })).status === 404, 'wrong token: not found');
+let ps = await pub('order-status', { method: 'GET', qs: `?b=${sb}&t=${stok}` });
+ok(ps.status === 200 && ps.data.batch.status === 'awaiting_payment' && ps.data.batch.invoiceUrl, 'right token: shows unpaid with pay link');
+ok(!JSON.stringify(ps.data).includes('sig') && !JSON.stringify(ps.data).includes('gid://'), 'customer view leaks no signatures or Shopify ids');
+
+console.log('\nWebhook → automatic release');
+pd.order = { id: 'gid://shopify/Order/7001', name: '#7001', displayFinancialStatus: 'PAID' };
+const payload = JSON.stringify({ id: 7001, note_attributes: [{ name: 'Bulk Batch', value: sb }] });
+const { createHmac } = await import('node:crypto');
+const forged = await pub('shopify-webhook', { body: payload, headers: { 'x-shopify-hmac-sha256': 'bm9wZQ==' } });
+ok(forged.status === 401, 'forged webhook rejected');
+const ordersBefore = S.orders.length;
+const hmac = createHmac('sha256', 'shpss_test_secret').update(payload).digest('base64');
+const wh = await pub('shopify-webhook', { body: payload, headers: { 'x-shopify-hmac-sha256': hmac } });
+ok(wh.status === 200, 'signed webhook accepted');
+await Promise.all(S.bgRuns || []);
+const made = S.orders.slice(ordersBefore);
+ok(made.length === 2, 'payment alone created both recipient orders — nobody pressed Release');
+ok(made.every(o => o.input.shippingLines[0].title === 'UPS® Ground'), 'recipient orders carry the real service name for ShipStation');
+ok(made.every(o => o.input.tags.includes(`batch-${sb}`) && o.input.customAttributes.some(a => a.key === 'Gift Message')), 'tagged to the batch with gift message');
+
+await pub('shopify-webhook', { body: payload, headers: { 'x-shopify-hmac-sha256': hmac } });
+await Promise.all(S.bgRuns || []);
+ok(S.orders.length === ordersBefore + 2, 'duplicate webhook delivery creates nothing new');
+ps = await pub('order-status', { method: 'GET', qs: `?b=${sb}&t=${stok}` });
+ok(ps.data.batch.status === 'released' && ps.data.batch.recipients.every(r => r.order), 'status page shows each recipient’s order');
+
+console.log('\nRate limit');
+let last;
+for (let i = 0; i < 13; i++) last = await pub('order-submit', { body: { buyer: {}, recipients: [] } });
+ok(last.status === 429, 'submit is rate-limited per IP');
 
 console.log(`\n${passed} checks passed.\n`);
 await server.stop();

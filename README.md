@@ -1,10 +1,36 @@
-# Bulk Order Console
+# Corporate Ordering — The BroBasket
 
-Internal tool for Go-To Gifting LLC. Turns a corporate recipient spreadsheet
-into one invoice for the buyer and, once it is paid, one Shopify order per
-recipient. Replaces the Zest concierge workflow.
+Customers upload a recipient list (or type it in), see a live price per
+address, and pay once. When Shopify reports the invoice paid, one order per
+recipient is created automatically. Staff have a back-office console for
+their own batches and oversight. Replaces Zest.
 
-Live: https://coporate-order-portal.netlify.app/ · Store: `new-brobasket.myshopify.com`
+| | |
+|---|---|
+| Customer page | `/` — order form · `/status.html?b=…&t=…` — private tracking link |
+| Staff console | `/admin/` — key remembered per device |
+| Store | `new-brobasket.myshopify.com` |
+
+## Customer flow
+
+1. **Recipients** — upload a spreadsheet (flexible headings; gift by SKU *or*
+   product name) or type rows. Same person + address with several gifts →
+   one order. "Same gift for everyone" shortcut. Gift message with
+   `{first_name}` / `{company}` merge; a message in the sheet overrides it.
+2. **Price** — each address priced by Shopify with the **live UPS rate**
+   (Ground preferred, else cheapest) and tax. **10% off at 20+ recipients.**
+3. **Details** — name, email, DOB (21+ checked), optional PO → Shopify
+   checkout for the batch total. Invoice email includes the tracking link.
+4. **Paid** → `orders/paid` webhook → recipient orders created automatically.
+   The status page also re-checks payment, so a missed webhook still resolves.
+
+### Public-endpoint safety (covered by `npm test`)
+- Server re-runs every rule; only catalog products can be ordered.
+- Quotes are HMAC-signed; edited prices, changed addresses, or a 20+ discount
+  reused on a smaller order are rejected at submit. Quotes expire after 3 h.
+- Buyer must be 21+. Per-IP rate limits. Optional Cloudflare Turnstile.
+- Status links use a 32-byte random token; the page sends no referrer.
+- Webhook verified with the app's API secret (HMAC).
 
 ---
 
@@ -149,7 +175,9 @@ Netlify → Site configuration → Environment variables (see `.env.example`):
 | `CONSOLE_KEY` | Long random passphrase. **Set this first.** |
 | `SHOPIFY_SHOP` | `new-brobasket.myshopify.com` |
 | `SHOPIFY_ADMIN_TOKEN` | Offline Admin token (`shpat_…`) |
-| `SHOPIFY_API_VERSION` | `2026-07` |
+| `SHOPIFY_API_VERSION` | `2026-07` (optional) |
+| `SHOPIFY_API_SECRET` | The app's API secret key (`shpss_…`) — verifies payment webhooks |
+| `TURNSTILE_SECRET_KEY` | Optional bot check; also set `publicSite.turnstileSiteKey` |
 
 Token scopes: `read_products`, `read_inventory`, `read_shipping`,
 `read_draft_orders`, `write_draft_orders`, `read_orders`, `write_orders`.

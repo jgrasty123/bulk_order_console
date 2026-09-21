@@ -4,190 +4,140 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Bulk Order Console — Go-To Gifting</title>
+<title>Corporate Gifting — The BroBasket</title>
+<meta name="description" content="Send a gift to everyone on your list. Upload a spreadsheet, see live pricing per address, pay once.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/assets/styles.css">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/order.css">
 </head>
 <body>
 
-<!-- Access gate. Every server action checks this key; the page is public. -->
-<dialog id="gate" class="modal">
-  <form method="dialog" id="gateForm">
-    <p class="eyebrow">Go-To Gifting LLC · Internal</p>
-    <h2>Console key</h2>
-    <p class="muted">This console creates real Shopify orders. Enter the key to continue.</p>
-    <label class="field"><span>Key</span><input type="password" id="gateKey" autocomplete="current-password" required></label>
-    <p class="form-error" id="gateError" hidden></p>
-    <div class="modal__actions"><button class="primary" type="submit">Unlock</button></div>
-  </form>
-</dialog>
-
-<dialog id="batchesDialog" class="modal modal--wide">
-  <div>
-    <p class="eyebrow">Saved batches</p>
-    <h2>Open a batch</h2>
-    <div class="grid-wrap"><table><thead><tr><th>Batch</th><th>Status</th><th>Buyer</th><th>Recipients</th><th>Total</th><th>Created</th><th></th></tr></thead>
-      <tbody id="batchesBody"></tbody></table></div>
-    <p class="empty" id="batchesEmpty" hidden>No batches yet.</p>
-    <div class="modal__actions"><button type="button" id="batchesClose">Close</button></div>
-  </div>
-</dialog>
-
-<header class="masthead">
-  <div>
-    <p class="eyebrow">Go-To Gifting LLC · Internal</p>
-    <h1>Bulk Order Console</h1>
-  </div>
-  <div class="masthead__right">
-    <div class="masthead__id">
-      Batch <b id="batchId" class="mono">—</b><br>
-      Store <b id="storeLabel" class="mono">not connected</b>
-    </div>
-    <button id="openBatches" type="button">Saved batches</button>
-  </div>
+<header class="bar">
+  <a class="brand" href="/"><span class="brand__mark">B</span><span class="brand__name">The BroBasket</span><span class="brand__sub">Corporate gifting</span></a>
+  <a class="bar__help" id="helpLink" href="#">Questions?</a>
 </header>
 
-<main>
-
-  <nav class="tape" aria-label="Progress">
-    <div class="tape__step" id="step1" data-state="active"><span class="tape__num">01</span><span class="tape__label">Upload sheet</span></div>
-    <div class="tape__step" id="step2"><span class="tape__num">02</span><span class="tape__label">Check rows</span></div>
-    <div class="tape__step" id="step3"><span class="tape__num">03</span><span class="tape__label">Quote</span></div>
-    <div class="tape__step" id="step4"><span class="tape__num">04</span><span class="tape__label">Invoice and payment</span></div>
-    <div class="tape__step" id="step5"><span class="tape__num">05</span><span class="tape__label">Release orders</span></div>
-  </nav>
-
-  <div class="notice" id="screeningNotice" hidden>
-    <span class="notice__code" id="screeningCode">SCREEN</span>
-    <p id="screeningText"></p>
+<section class="hero">
+  <div class="hero__inner">
+    <h1>One list. Everyone gets a gift.</h1>
+    <p class="hero__lede">Upload your spreadsheet or add people below. Every recipient gets their own shipment, priced to their address. You pay once.</p>
+    <ul class="facts">
+      <li><b>10% off</b><span>20 or more recipients</span></li>
+      <li><b>Live UPS rates</b><span>priced to each address</span></li>
+      <li><b>Adult signature</b><span>on every delivery, 21+</span></li>
+    </ul>
   </div>
+</section>
 
-  <!-- 01 -->
-  <section id="uploadStage">
-    <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Choose a CSV file or drop one here">
-      <h2>Drop a recipient sheet, or click to choose one</h2>
-      <p class="dropzone__hint">
-        One row per gift. Rows that share a <span class="mono">recipient_id</span> become a single order with several items.<br>
-        <a href="/templates/bulk-order-template.csv" download>Download the template</a>
-      </p>
+<main class="page">
+
+  <!-- 1 · Recipients -->
+  <section class="step" id="step1">
+    <header class="step__head">
+      <span class="step__num">1</span>
+      <div><h2>Who’s getting a gift?</h2>
+        <p class="muted">One row per gift. Same person twice with different gifts? They’ll get both in one box.</p></div>
+    </header>
+
+    <div class="toolbar">
+      <label class="btn btn--dark" for="fileInput">Upload spreadsheet</label>
       <input type="file" id="fileInput" accept=".csv,text/csv" hidden>
+      <a class="btn" href="/templates/corporate-order-template.csv" download>Download template</a>
+      <button class="btn" id="addRow" type="button">+ Add recipient</button>
+      <span class="toolbar__spacer"></span>
+      <span class="apply-all">
+        <label class="inline" for="giftAll">Same gift for everyone</label>
+        <select id="giftAll"><option value="">Choose a gift…</option></select>
+        <button class="btn" id="applyAll" type="button">Apply</button>
+      </span>
+    </div>
+
+    <div class="sheet" id="sheetWrap">
+      <table class="sheet__table">
+        <thead><tr>
+          <th class="c-n">#</th><th>First name</th><th>Last name</th><th class="c-gift">Gift</th><th class="c-qty">Qty</th>
+          <th>Company</th><th>Street address</th><th>Apt / suite</th><th>City</th><th class="c-st">State</th><th class="c-zip">ZIP</th>
+          <th>Phone</th><th class="c-x"><span class="sr">Remove</span></th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <p class="sheet__empty" id="emptyNote">No recipients yet — upload a spreadsheet or add someone.</p>
+    </div>
+    <p class="count" id="countLine"></p>
+
+    <div class="grid2">
+      <label class="field"><span>Gift message <em>optional</em></span>
+        <textarea id="message" rows="3" maxlength="500" placeholder="Hi {first_name}, thanks for a great year!"></textarea>
+        <small class="muted">Use <button type="button" class="chip" data-merge="{first_name}">{first_name}</button>
+          <button type="button" class="chip" data-merge="{company}">{company}</button> to personalize. A message in your spreadsheet overrides this for that person.</small>
+        <small class="preview" id="msgPreview"></small>
+      </label>
+      <label class="field"><span>Deliver on <em>optional</em></span>
+        <input type="date" id="deliveryDate">
+        <small class="muted">Leave blank to ship as soon as possible.</small>
+      </label>
+    </div>
+
+    <ul class="issues" id="issues" hidden></ul>
+    <div class="actions"><button class="btn btn--primary" id="priceBtn" type="button">Check addresses &amp; get price</button></div>
+  </section>
+
+  <!-- 2 · Price -->
+  <section class="step" id="step2" hidden>
+    <header class="step__head">
+      <span class="step__num">2</span>
+      <div><h2>Your price</h2><p class="muted">Priced to each address with live UPS Ground rates and tax.</p></div>
+    </header>
+    <div class="progress" id="progress" hidden><div class="progress__bar" id="progressBar"></div><span id="progressLabel"></span></div>
+    <div id="priceResult" hidden>
+      <div class="sheet"><table class="sheet__table sheet__table--read">
+        <thead><tr><th>Recipient</th><th>Destination</th><th>Gift</th><th>Shipping</th><th class="num">Tax</th><th class="num">Total</th></tr></thead>
+        <tbody id="priceRows"></tbody>
+      </table></div>
+      <div class="summary" id="summary"></div>
+      <p class="nudge" id="nudge" hidden></p>
     </div>
   </section>
 
-  <!-- 02 -->
-  <section id="reviewStage" hidden>
-    <div class="readout">
-      <div class="readout__cell"><span class="readout__num mono" id="cRows">0</span><span class="readout__label">Rows</span></div>
-      <div class="readout__cell"><span class="readout__num mono" id="cOrders">0</span><span class="readout__label">Orders</span></div>
-      <div class="readout__cell" data-tone="stop"><span class="readout__num mono" id="cStop">0</span><span class="readout__label">Blocking</span></div>
-      <div class="readout__cell" data-tone="warn"><span class="readout__num mono" id="cWarn">0</span><span class="readout__label">Warnings</span></div>
-      <div class="readout__cell" data-tone="ok"><span class="readout__num mono" id="cUnits">0</span><span class="readout__label">Units</span></div>
+  <!-- 3 · Details + pay -->
+  <section class="step" id="step3" hidden>
+    <header class="step__head">
+      <span class="step__num">3</span>
+      <div><h2>Your details</h2><p class="muted">We’ll email your invoice and a link to follow every delivery.</p></div>
+    </header>
+    <div class="grid3">
+      <label class="field"><span>Your name</span><input id="bName" autocomplete="name"></label>
+      <label class="field"><span>Company</span><input id="bCompany" autocomplete="organization"></label>
+      <label class="field"><span>Email</span><input id="bEmail" type="email" autocomplete="email"></label>
+      <label class="field"><span>Phone <em>optional</em></span><input id="bPhone" autocomplete="tel"></label>
+      <label class="field"><span>PO number <em>optional</em></span><input id="bPo"></label>
+      <label class="field"><span>Your date of birth</span><input id="bDob" type="date" autocomplete="bday"></label>
     </div>
-
-    <div class="controls">
-      <button class="filter-chip" id="fAll" aria-pressed="true">All rows</button>
-      <button class="filter-chip" id="fStop" aria-pressed="false">Blocking only</button>
-      <button class="filter-chip" id="fWarn" aria-pressed="false">Warnings only</button>
-      <button id="recheck">Re-check</button>
-      <span class="spacer"></span>
-      <button id="exportFixed">Download corrected sheet</button>
-      <button id="startOver">Start over</button>
-    </div>
-
-    <div class="grid-wrap grid-wrap--tall">
-      <table id="grid"><thead><tr id="gridHead"></tr></thead><tbody id="gridBody"></tbody></table>
-    </div>
-
-    <div class="ledger">
-      <h2>Issues</h2>
-      <ul class="ledger__list" id="ledger"></ul>
-      <p class="empty" id="ledgerEmpty" hidden>Every row checks out. Nothing to fix.</p>
-    </div>
+    <p class="fine">You must be 21 or older to order. Every delivery requires an adult signature (21+) from the recipient. Where we can ship is confirmed for each address before checkout.</p>
+    <div id="turnstile"></div>
+    <p class="error" id="submitError" hidden></p>
+    <div class="actions"><button class="btn btn--primary btn--big" id="submitBtn" type="button">Continue to secure checkout</button></div>
   </section>
 
-  <!-- 03 -->
-  <section id="orderStage" class="panel" hidden>
-    <h2>Order details</h2>
-    <p class="muted">Prices come from Shopify. Tax is calculated at each recipient's own address.</p>
-    <div class="form-grid">
-      <label class="field"><span>Buyer name</span><input id="buyerName" autocomplete="off"></label>
-      <label class="field"><span>Company</span><input id="buyerCompany" autocomplete="off"></label>
-      <label class="field"><span>Invoice email <em>required</em></span><input id="buyerEmail" type="email" autocomplete="off"></label>
-      <label class="field"><span>Phone</span><input id="buyerPhone" autocomplete="off"></label>
-      <label class="field"><span>PO number</span><input id="buyerPo" autocomplete="off"></label>
-      <label class="field"><span>Discount %</span><input id="discountPct" class="mono" inputmode="decimal" value="0"></label>
-      <label class="field"><span>Shipping per recipient ($) <em>required</em></span><input id="shippingEach" class="mono" inputmode="decimal"></label>
+  <!-- Done -->
+  <section class="step step--done" id="done" hidden>
+    <h2>Almost done — pay to send your gifts</h2>
+    <p>Your order <b class="mono" id="doneId"></b> is saved. Nothing ships until it’s paid; then every recipient’s gift is created and shipped automatically.</p>
+    <div class="actions actions--left">
+      <a class="btn btn--primary btn--big" id="payLink" href="#">Pay <span id="payTotal"></span> securely</a>
+      <a class="btn" id="statusLink" href="#" target="_blank" rel="noopener">Track this order</a>
     </div>
-    <label class="check"><input type="checkbox" id="testMode"> <span><b>Test batch.</b> No invoice; child orders are created as Shopify test orders tagged <span class="mono">bulk-test</span>. Use this for the first run.</span></label>
-    <p class="form-error" id="orderError" hidden></p>
-    <div class="controls controls--end"><button class="primary" id="getQuote" disabled>Get quote</button></div>
-  </section>
-
-  <section id="quoteStage" class="panel" hidden>
-    <div class="progress" id="quoteProgress" hidden><div class="progress__bar" id="quoteBar"></div><span class="progress__label mono" id="quoteLabel"></span></div>
-
-    <div id="quoteResult" hidden>
-      <div class="readout">
-        <div class="readout__cell"><span class="readout__num mono" id="qRecipients">0</span><span class="readout__label">Recipients</span></div>
-        <div class="readout__cell"><span class="readout__num mono" id="qMerch">0</span><span class="readout__label">Gifts</span></div>
-        <div class="readout__cell"><span class="readout__num mono" id="qDiscount">0</span><span class="readout__label">Discount</span></div>
-        <div class="readout__cell"><span class="readout__num mono" id="qShipping">0</span><span class="readout__label">Shipping</span></div>
-        <div class="readout__cell"><span class="readout__num mono" id="qTax">0</span><span class="readout__label">Tax</span></div>
-        <div class="readout__cell" data-tone="ok"><span class="readout__num mono" id="qTotal">0</span><span class="readout__label">Invoice total</span></div>
-      </div>
-      <ul class="ledger__list" id="quoteErrors"></ul>
-      <div class="controls">
-        <button id="taxCsvQuote">Download tax breakdown</button>
-        <span class="spacer"></span>
-        <button class="primary" id="createBatch" disabled>Create invoice</button>
-      </div>
-    </div>
-  </section>
-
-  <!-- 04 + 05 -->
-  <section id="batchStage" class="panel" hidden>
-    <div class="batch-head">
-      <div>
-        <p class="eyebrow">Batch</p>
-        <h2 class="mono" id="bId">—</h2>
-      </div>
-      <span class="status-pill mono" id="bStatus">—</span>
-    </div>
-    <p id="bSummary" class="muted"></p>
-
-    <div id="bInvoice" class="invoice-box" hidden>
-      <p>Parent invoice <b class="mono" id="bDraft"></b> for <b class="mono" id="bTotal"></b>
-        <span id="bSent" class="muted"></span></p>
-      <div class="controls">
-        <a id="bInvoiceLink" class="button" target="_blank" rel="noopener">Open invoice</a>
-        <button id="sendInvoice">Email invoice to buyer</button>
-        <button id="checkPayment">Check payment</button>
-      </div>
-      <p class="muted small">Paid by check or wire? Mark the draft order as paid in Shopify admin, then press Check payment.</p>
-    </div>
-
-    <div class="progress" id="releaseProgress" hidden><div class="progress__bar" id="releaseBar"></div><span class="progress__label mono" id="releaseLabel"></span></div>
-
-    <div class="controls">
-      <button id="taxCsvBatch">Download tax breakdown</button>
-      <button id="resultsCsv">Download results</button>
-      <span class="spacer"></span>
-      <button class="primary" id="releaseBtn" hidden>Release orders</button>
-    </div>
-
-    <div class="grid-wrap grid-wrap--tall">
-      <table><thead><tr><th class="rail">Order</th><th>Recipient</th><th>Destination</th><th>Items</th><th>Total</th><th>Result</th></tr></thead>
-        <tbody id="resultsBody"></tbody></table>
-    </div>
-
-    <details class="log"><summary>Activity log</summary><ol id="bLog" class="mono"></ol></details>
+    <p class="muted">We’ve also emailed the invoice and tracking link to <b id="doneEmail"></b>.</p>
   </section>
 
 </main>
 
+<footer class="foot">
+  <p>The BroBasket corporate gifting · <a id="footHelp" href="#">Contact us</a></p>
+</footer>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-<script src="/assets/app.js"></script>
+<script type="module" src="/assets/order.js"></script>
 </body>
 </html>

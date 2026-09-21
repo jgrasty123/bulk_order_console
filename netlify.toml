@@ -26,3 +26,15 @@
     X-Frame-Options = "DENY"
     Referrer-Policy = "same-origin"
     X-Content-Type-Options = "nosniff"
+
+# Private status links carry a token in the URL — never send it onward.
+[[headers]]
+  for = "/status.html"
+  [headers.values]
+    Referrer-Policy = "no-referrer"
+    Cache-Control = "no-store"
+
+[[headers]]
+  for = "/shared/*"
+  [headers.values]
+    Cache-Control = "max-age=0, must-revalidate"
