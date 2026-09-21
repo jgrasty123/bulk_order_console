@@ -10,6 +10,7 @@ import { createHmac, createHash, timingSafeEqual } from 'node:crypto';
 import { getStore } from '@netlify/blobs';
 import { gql, env, money, fromCents } from './shopify.mjs';
 import { rules } from './common.mjs';
+import { displayTitle } from '../../shared/giftmatch.mjs';
 
 /* --- Catalog --------------------------------------------------------------- */
 
@@ -41,7 +42,7 @@ export async function loadCatalog({ fresh = false } = {}) {
       items.push({
         sku: node.sku,
         variantId: node.id,
-        title: node.product.title + (node.title && node.title !== 'Default Title' ? ` — ${node.title}` : ''),
+        title: displayTitle(node.product.title) + (node.title && node.title !== 'Default Title' ? ` — ${node.title}` : ''),
         price: node.price,
         available: node.availableForSale,
         image: (node.product.featuredMedia && node.product.featuredMedia.preview &&

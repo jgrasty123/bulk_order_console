@@ -9,12 +9,14 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
 <link rel="stylesheet" href="/assets/order.css">
 </head>
 <body>
 
 <header class="bar">
-  <a class="brand" href="/"><span class="brand__mark">B</span><span class="brand__name">The BroBasket</span><span class="brand__sub">Corporate gifting</span></a>
+  <a class="brand" href="/"><img class="brand__logo" src="/assets/brobasket-logo.png" alt="The BroBasket" width="44" height="44"><span class="brand__name">The BroBasket</span><span class="brand__sub">Corporate gifting</span></a>
   <a class="bar__help" id="helpLink" href="#">Questions?</a>
 </header>
 
@@ -44,6 +46,7 @@
       <label class="btn btn--dark" for="fileInput">Upload spreadsheet</label>
       <input type="file" id="fileInput" accept=".csv,text/csv" hidden>
       <a class="btn" href="/templates/corporate-order-template.csv" download>Download template</a>
+      <button class="btn" id="giftList" type="button">Download gift list</button>
       <button class="btn" id="addRow" type="button">+ Add recipient</button>
       <span class="toolbar__spacer"></span>
       <span class="apply-all">
@@ -51,6 +54,15 @@
         <select id="giftAll"><option value="">Choose a gift…</option></select>
         <button class="btn" id="applyAll" type="button">Apply</button>
       </span>
+    </div>
+
+    <div class="match" id="matchPanel" hidden>
+      <div class="match__head">
+        <div><h3>Check your gifts</h3>
+          <p class="muted">We matched the gift names in your spreadsheet to our products. Confirm each one — your choice applies to every row that used that name.</p></div>
+        <button class="btn btn--dark" id="confirmAll" type="button" hidden>Confirm all</button>
+      </div>
+      <ul class="match__list" id="matchList"></ul>
     </div>
 
     <div class="sheet" id="sheetWrap">

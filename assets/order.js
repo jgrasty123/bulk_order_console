@@ -10,6 +10,7 @@
 import {
   checkRecipient, groupRows, mergeMessage, discountFor, isAdult, normaliseState, clean, EMAIL_RE
 } from '/shared/rules.mjs';
+import { buildIndex, matchGift, displayTitle } from '/shared/giftmatch.mjs';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -42,11 +43,12 @@ const HEADERS = {
   address2: 'address2', address_2: 'address2', apt: 'address2', suite: 'address2', apt_suite: 'address2',
   city: 'city', state: 'state', province: 'state', zip: 'zip', zip_code: 'zip', zipcode: 'zip', postal_code: 'zip',
   phone: 'phone', phone_number: 'phone', email: 'email',
-  gift_sku: 'sku', sku: 'sku', gift: 'sku', product: 'sku',
+  gift_sku: 'giftText', sku: 'giftText', gift: 'giftText', gift_name: 'giftText', product: 'giftText',
+  product_name: 'giftText', item: 'giftText', basket: 'giftText',
   qty: 'qty', quantity: 'qty', gift_message: 'giftMessage', message: 'giftMessage', note: 'giftMessage'
 };
 
-let CONFIG, catalog = new Map(), rows = [], seq = 1;
+let CONFIG, catalog = new Map(), giftIndex = [], rows = [], seq = 1;
 let priced = null;         // { recipients, quotes, discountPct }
 
 /* --- Setup ------------------------------------------------------------------ */
@@ -58,7 +60,8 @@ async function init() {
 
   try {
     const { items } = await (await fetch('/.netlify/functions/order-catalog')).json();
-    items.forEach((i) => catalog.set(i.sku, i));
+    items.forEach((i) => catalog.set(i.sku, { ...i, title: displayTitle(i.title) }));
+    giftIndex = buildIndex([...catalog.values()]);
   } catch {
     showIssues([{ sev: 'stop', msg: 'Our gift list didn’t load. Please refresh the page.' }]);
   }
@@ -92,7 +95,8 @@ function renderRows(issueMap = new Map()) {
     tr.innerHTML = `<td class="c-n">${i + 1}</td>` + COLS.map((c) => {
       const cls = [c.cls, bad.stop.has(c.key) ? 'bad' : bad.warn.has(c.key) ? 'warn' : ''].filter(Boolean).join(' ');
       if (c.select) {
-        return `<td class="${cls}"><select data-k="sku" aria-label="Gift, row ${i + 1}"><option value="">Choose a gift…</option>${giftOptions(r.sku)}</select></td>`;
+        const hint = r.giftText && !r.sku ? ` title="You wrote: ${esc(r.giftText)}"` : '';
+        return `<td class="${cls}"${hint}><select data-k="sku" aria-label="Gift, row ${i + 1}"><option value="">${r.giftText && !r.sku ? `“${esc(r.giftText)}” — choose…` : 'Choose a gift…'}</option>${giftOptions(r.sku)}</select></td>`;
       }
       return `<td class="${cls}"><input data-k="${c.key}" value="${esc(r[c.key])}" aria-label="${c.label}, row ${i + 1}"` +
         `${c.mode ? ` inputmode="${c.mode}"` : ''} autocomplete="off"></td>`;
@@ -123,17 +127,6 @@ function invalidate() {
 
 /* --- Spreadsheet --------------------------------------------------------------- */
 
-function findSku(v) {
-  const s = clean(v);
-  if (!s) return '';
-  if (catalog.has(s)) return s;
-  const upper = s.toUpperCase();
-  for (const k of catalog.keys()) if (k.toUpperCase() === upper) return k;
-  const lower = s.toLowerCase();
-  for (const i of catalog.values()) if (i.title.toLowerCase() === lower) return i.sku;
-  return s;  // keep what they typed; checking will flag it
-}
-
 function ingest(file) {
   Papa.parse(file, {
     header: true, skipEmptyLines: 'greedy',
@@ -151,7 +144,10 @@ function ingest(file) {
       const incoming = res.data.map((raw) => {
         const r = {};
         for (const [h, k] of Object.entries(map)) r[k] = clean(raw[h]);
-        r.sku = findSku(r.sku);
+        const m = matchGift(r.giftText, giftIndex);
+        r.sku = m.confidence === 'exact' || m.confidence === 'likely' ? m.sku : '';
+        r.match = m.confidence === 'exact' ? 'ok' : r.giftText ? m.confidence : 'ok';
+        r.candidates = m.candidates;
         r.qty = r.qty || '1';
         if (r.state) r.state = normaliseState(r.state);   // "California" → "CA" in the grid too
         return r;
@@ -160,8 +156,86 @@ function ingest(file) {
       incoming.forEach((r) => addRow(r));
       invalidate();
       renderRows();
+      renderMatches();
       showIssues([]);
     }
+  });
+}
+
+/* --- Gift matching ------------------------------------------------------------
+   One decision per distinct name the customer typed, not per row. Confident
+   matches are pre-selected but still need a Confirm, because a wrong guess
+   would ship the wrong basket to everyone who shares that name.
+   -------------------------------------------------------------------------------- */
+
+const pending = () => {
+  const groups = new Map();
+  for (const r of rows) {
+    if (!r.giftText || r.match === 'ok') continue;
+    const k = r.giftText.trim().toLowerCase();
+    if (!groups.has(k)) groups.set(k, { text: r.giftText.trim(), rows: [], state: r.match, sku: r.sku, candidates: r.candidates || [] });
+    groups.get(k).rows.push(r);
+  }
+  return [...groups.values()];
+};
+
+function renderMatches() {
+  const list = pending();
+  const box = $('matchPanel');
+  box.hidden = !list.length;
+  if (!list.length) { $('matchList').innerHTML = ''; box._groups = []; return; }
+  const others = (skip) => [...catalog.values()].filter((i) => !skip.includes(i.sku))
+    .map((i) => `<option value="${esc(i.sku)}">${esc(i.title)} — $${esc(i.price)}</option>`).join('');
+  $('matchList').innerHTML = list.map((g, n) => {
+    const best = g.candidates.filter((s) => catalog.has(s));
+    const opts = `<option value="">${g.state === 'likely' ? 'Choose…' : 'Pick the gift you meant…'}</option>` +
+      (best.length ? `<optgroup label="Best matches">${best.map((s) => {
+        const i = catalog.get(s);
+        return `<option value="${esc(s)}"${s === g.sku ? ' selected' : ''}>${esc(i.title)} — $${esc(i.price)}</option>`;
+      }).join('')}</optgroup>` : '') +
+      `<optgroup label="All gifts">${others(best)}</optgroup>`;
+    const tag = g.state === 'likely' ? '<span class="tag tag--ok">Matched</span>'
+      : g.state === 'none' ? '<span class="tag tag--bad">No match</span>' : '<span class="tag tag--warn">Pick one</span>';
+    return `<li data-n="${n}">${tag}
+      <span class="match__typed">“${esc(g.text)}”<small>${g.rows.length} row${g.rows.length === 1 ? '' : 's'}</small></span>
+      <span class="match__arrow">→</span>
+      <select data-match="${n}" aria-label="Gift for “${esc(g.text)}”">${opts}</select>
+      ${g.state === 'likely' ? `<button type="button" class="btn" data-confirm="${n}">Confirm</button>` : '<span></span>'}</li>`;
+  }).join('');
+  const likely = list.filter((g) => g.state === 'likely' && g.sku).length;
+  $('confirmAll').hidden = likely < 2;
+  $('confirmAll').textContent = `Confirm all ${likely} matches`;
+  $('matchPanel')._groups = list;
+}
+
+function settle(g, sku) {
+  g.rows.forEach((r) => { r.sku = sku; r.match = 'ok'; });
+  invalidate(); renderRows(); renderMatches();
+}
+
+function wireMatches() {
+  $('matchList').addEventListener('change', (e) => {
+    const n = e.target.dataset.match; if (n === undefined) return;
+    const g = $('matchPanel')._groups[+n];
+    // Choosing from the list is the decision — apply it straight away.
+    if (e.target.value) settle(g, e.target.value);
+  });
+  $('matchList').addEventListener('click', (e) => {
+    const n = e.target.dataset.confirm; if (n === undefined) return;
+    const g = $('matchPanel')._groups[+n];
+    if (g.sku) settle(g, g.sku);
+  });
+  $('confirmAll').addEventListener('click', () => {
+    ($('matchPanel')._groups || []).filter((g) => g.state === 'likely' && g.sku)
+      .forEach((g) => g.rows.forEach((r) => { r.sku = g.sku; r.match = 'ok'; }));
+    invalidate(); renderRows(); renderMatches();
+  });
+  $('giftList').addEventListener('click', () => {
+    const csv = Papa.unparse({ fields: ['gift', 'price', 'sku'],
+      data: [...catalog.values()].filter((i) => i.available).map((i) => [i.title, i.price, i.sku]) });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = 'brobasket-corporate-gift-list.csv'; a.click();
   });
 }
 
@@ -202,6 +276,10 @@ async function price() {
     (FIELD_TO_COLS[field] || []).forEach((c) => issueMap.get(id)[sev].add(c));
   });
 
+  const open = pending();
+  if (open.length) {
+    problems.push({ sev: 'stop', msg: `Please check ${open.length} gift name${open.length === 1 ? '' : 's'} from your spreadsheet in “Check your gifts” above.` });
+  }
   if (recipients.length < CONFIG.limits.minRecipientsPerBatch) {
     problems.push({ sev: 'stop', msg: `Corporate orders need at least ${CONFIG.limits.minRecipientsPerBatch} recipients.` });
   }
@@ -373,6 +451,7 @@ function wire() {
     const tr = e.target.closest('tr'); if (!tr) return;
     const r = rows.find((x) => x.id === Number(tr.dataset.id));
     r[e.target.dataset.k] = e.target.value;
+    if (e.target.dataset.k === 'sku') { r.match = 'ok'; renderMatches(); }
     if (e.target.dataset.k === 'state' && e.target.value.length > 2) r.state = normaliseState(e.target.value);
     e.target.closest('td').classList.remove('bad', 'warn');
     invalidate(); updateCount();
@@ -399,6 +478,7 @@ function wire() {
   $('deliveryDate').min = new Date().toISOString().slice(0, 10);
   $('deliveryDate').addEventListener('input', invalidate);
   $('priceBtn').addEventListener('click', price);
+  wireMatches();
   $('submitBtn').addEventListener('click', submit);
   renderRows();
 }
