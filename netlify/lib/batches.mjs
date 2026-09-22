@@ -27,6 +27,7 @@ export function tokenMatches(batch, token) {
 /* Turn priced recipients into a stored batch record (not yet saved). */
 export function buildBatch({ id, test = false, source = 'staff', buyer = {}, pricing = {}, recipients }) {
   const totals = { gross: 0, discount: 0, merchandise: 0, shipping: 0, tax: 0, total: 0, units: 0 };
+  const service = recipients.find((r) => r.quote && r.quote.shippingTitle);
   const stored = recipients.map((r) => {
     const q = r.quote.cents;
     for (const k of ['gross', 'discount', 'merchandise', 'shipping', 'tax', 'total']) totals[k] += q[k];
@@ -64,6 +65,7 @@ export function buildBatch({ id, test = false, source = 'staff', buyer = {}, pri
     totals: Object.fromEntries(Object.entries(totals).map(([k, v]) => [k, k === 'units' ? v : fromCents(v)])),
     totalsCents: totals,
     parent: null,
+    shippingTitle: (service && service.quote.shippingTitle) || rules.pricing.shippingTitle,
     recipients: stored,
     log: [{ at: now(), msg: test ? 'Test batch created — no invoice.' : `Batch created (${source}).` }]
   };
@@ -75,41 +77,69 @@ export function productSummary(recipients) {
   const by = new Map();
   for (const r of recipients) {
     for (const l of r.lines) {
-      if (!by.has(l.sku)) by.set(l.sku, { sku: l.sku, title: l.title || l.sku, price: l.price, qty: 0 });
+      if (!by.has(l.sku)) by.set(l.sku, { sku: l.sku, title: l.title || l.sku, price: l.price, variantId: l.variantId, qty: 0 });
       by.get(l.sku).qty += Number(l.qty);
     }
   }
   const list = [...by.values()].sort((a, b) => a.title.localeCompare(b.title));
   // Only itemise if every product has a price and the maths reconciles.
-  return list.every((p) => p.price != null) ? list : null;
+  return list.every((p) => p.price != null && p.variantId) ? list : null;
 }
 
-/* --- Parent invoice ------------------------------------------------------ */
+/* --- Parent invoice -------------------------------------------------------
+   The invoice is a real Shopify order, not a draft. Draft orders can't hold
+   tax lines or a shipping line without one shipping address, and a bulk
+   order has many — which is why these used to be fake product lines. As a
+   real order it carries:
+
+     line items   the actual product variants, at their real prices
+     discount     a real discount, named for the code, at the exact amount
+                  the recipients were quoted (so it can't drift a cent)
+     shipping     a real shipping line
+     tax          real tax lines, per jurisdiction, summed from what Shopify
+                  calculated for each destination
+
+   It holds no stock: inventory is bypassed here and moves when the recipient
+   orders are created after payment, so an unpaid invoice never reserves
+   anything. It carries no shipping address, so nothing tries to ship it.
+   --------------------------------------------------------------------------- */
 
 const CREATE_PARENT = `
-  mutation CreateParent($input: DraftOrderInput!) {
-    draftOrderCreate(input: $input) {
-      draftOrder { id name invoiceUrl status totalPriceSet { shopMoney { amount } } }
-      userErrors { field message }
+  mutation CreateParent($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
+    orderCreate(order: $order, options: $options) {
+      order {
+        id name
+        totalPriceSet { shopMoney { amount } }
+        paymentCollectionDetails { additionalPaymentCollectionUrl }
+      }
+      userErrors { field message code }
     }
   }`;
 
 const SEND = `
-  mutation SendInvoice($id: ID!, $email: EmailInput) {
-    draftOrderInvoiceSend(id: $id, email: $email) {
-      draftOrder { id invoiceSentAt }
+  mutation SendOrderInvoice($id: ID!, $email: EmailInput) {
+    orderInvoiceSend(id: $id, email: $email) {
+      order { id name }
       userErrors { field message }
     }
   }`;
 
-const customLine = (title, cents) => ({
-  title, quantity: 1,
-  originalUnitPriceWithCurrency: { amount: fromCents(cents), currencyCode: rules.pricing.currencyCode },
-  taxable: false, requiresShipping: false
-});
+const bag = (cents) => ({ shopMoney: { amount: fromCents(cents), currencyCode: rules.pricing.currencyCode } });
 
-/* Reserve the id, create the parent draft order, save. Returns the batch;
-   throws with .status set when the caller should report an error. */
+/* Every jurisdiction that taxed any recipient, with the totals Shopify
+   worked out for each destination. */
+export function taxLinesFor(recipients) {
+  const by = new Map();
+  for (const r of recipients) {
+    for (const t of (r.quote && r.quote.taxLines) || []) {
+      const key = `${t.title}|${t.rate}`;
+      if (!by.has(key)) by.set(key, { title: t.title, rate: t.rate, cents: 0 });
+      by.get(key).cents += t.cents;
+    }
+  }
+  return [...by.values()].filter((t) => t.cents > 0).sort((a, b) => b.cents - a.cents);
+}
+
 export async function createBatchWithInvoice(batch) {
   const claimed = await reserveBatch({ ...batch, status: 'creating' });
   if (!claimed) {
@@ -123,65 +153,70 @@ export async function createBatchWithInvoice(batch) {
   const n = batch.recipients.length;
   const tagPrefix = rules.orderDefaults.batchTagPrefix;
 
-  // Itemise the invoice by product — the buyer sees what they bought and the
-  // admin order reads like an order. These are custom lines, not variants, so
-  // paying the invoice does not touch stock: inventory moves on the recipient
-  // orders, which carry the real variants.
   const products = productSummary(batch.recipients);
-  const lineItems = [];
-  let discount = t.discount;
-
-  if (products && products.reduce((sum, p) => sum + toCents(p.price) * p.qty, 0) === t.gross) {
-    products.forEach((p) => lineItems.push({
-      title: p.title,
-      quantity: p.qty,
-      originalUnitPriceWithCurrency: { amount: p.price, currencyCode: rules.pricing.currencyCode },
-      taxable: false,
-      requiresShipping: false
-    }));
-  } else {
-    // Prices or totals don't reconcile — fall back to one line rather than
-    // show the buyer an itemisation that doesn't add up.
-    lineItems.push(customLine(
-      `Corporate gift batch ${batch.id} — ${n} recipient${n === 1 ? '' : 's'}, ${t.units} gift${t.units === 1 ? '' : 's'}`,
-      t.merchandise
-    ));
-    discount = 0;
+  if (!products || products.reduce((sum, p) => sum + toCents(p.price) * p.qty, 0) !== t.gross) {
+    batch.status = 'failed';
+    batch.log.push({ at: now(), msg: 'Invoice not created: product prices do not reconcile to the quoted total.' });
+    await saveBatch(batch);
+    const err = new Error('We could not price this order. Please try again.');
+    err.status = 422;
+    throw err;
   }
 
-  if (t.shipping > 0) lineItems.push(customLine(`Shipping — ${n} destination${n === 1 ? '' : 's'} (UPS)`, t.shipping));
-  if (t.tax > 0) lineItems.push(customLine('Sales tax — calculated per destination', t.tax));
+  const taxes = taxLinesFor(batch.recipients);
+  const taxTotal = taxes.reduce((sum, x) => sum + x.cents, 0);
 
-  const input = {
+  const order = {
     email: batch.buyer.email,
+    financialStatus: 'PENDING',                 // unpaid until they pay the invoice
+    currency: rules.pricing.currencyCode,
+    lineItems: products.map((p) => ({
+      variantId: p.variantId,
+      quantity: p.qty,
+      priceSet: { shopMoney: { amount: p.price, currencyCode: rules.pricing.currencyCode } },
+      taxable: true,
+      requiresShipping: true
+    })),
+    shippingLines: [{
+      title: `${batch.shippingTitle || 'Shipping'} — ${n} destination${n === 1 ? '' : 's'}`,
+      priceSet: bag(t.shipping)
+    }],
+    taxLines: taxes.map((x) => ({ title: x.title, rate: x.rate, priceSet: bag(x.cents) })),
     note:
       `Bulk corporate batch ${batch.id} (${batch.source}): ${n} recipients, ${t.units} gifts.` +
-      (batch.pricing.discountPct ? ` ${batch.pricing.discountPct}% volume discount applied per recipient.` : '') +
-      ` Child orders are created at $0 after payment and carry tag ${tagPrefix}${batch.id}.` +
+      ` Each recipient's own order is created after payment, tagged ${tagPrefix}${batch.id}.` +
+      ` This order holds the payment and tax; it is not shipped.` +
       (batch.buyer.dob ? ` Buyer DOB given: ${batch.buyer.dob}.` : ''),
     tags: [...rules.orderDefaults.parentOrderTags, `${tagPrefix}${batch.id}`, `bulk-source-${batch.source}`,
       ...(batch.pricing.discountCode ? [`code-${batch.pricing.discountCode}`] : [])],
-    taxExempt: true,
     customAttributes: [
       { key: 'Bulk Batch', value: batch.id },
       { key: 'Recipients', value: String(n) },
       ...(batch.pricing.discountCode ? [{ key: 'Discount Code', value: batch.pricing.discountCode }] : [])
-    ],
-    lineItems
+    ]
   };
-  if (discount > 0) {
-    input.appliedDiscount = {
-      title: `${batch.pricing.discountTitle || 'Corporate volume discount'}${batch.pricing.discountPct ? ` (${batch.pricing.discountPct}%)` : ''}`,
-      description: 'Applied per recipient',
-      value: Number(fromCents(discount)),
-      valueType: 'FIXED_AMOUNT'
+  if (batch.buyer.poNumber) order.poNumber = batch.buyer.poNumber;
+  if (batch.buyer.phone) order.phone = batch.buyer.phone;
+
+  // A real discount, at exactly the amount quoted across the recipients.
+  if (t.discount > 0) {
+    order.discountCode = {
+      itemFixedDiscountCode: {
+        code: batch.pricing.discountCode ||
+              `CORPORATE-VOLUME-${batch.pricing.discountPct || ''}`.replace(/-$/, ''),
+        amountSet: bag(t.discount)
+      }
     };
   }
-  if (batch.buyer.poNumber) input.poNumber = batch.buyer.poNumber;
-  if (batch.buyer.phone) input.phone = batch.buyer.phone;
+
+  const options = {
+    inventoryBehaviour: 'BYPASS',    // stock moves on the recipient orders, after payment
+    sendReceipt: false,              // the invoice email goes separately
+    sendFulfillmentReceipt: false
+  };
 
   try {
-    const out = (await gql(CREATE_PARENT, { input })).draftOrderCreate;
+    const out = (await gql(CREATE_PARENT, { order, options })).orderCreate;
     if (out.userErrors.length) {
       const msg = out.userErrors.map((e) => e.message).join('; ');
       batch.status = 'failed';
@@ -189,12 +224,20 @@ export async function createBatchWithInvoice(batch) {
       await saveBatch(batch);
       const err = new Error(msg); err.status = 422; throw err;
     }
-    const d = out.draftOrder;
-    batch.parent = { draftId: d.id, draftName: d.name, invoiceUrl: d.invoiceUrl, orderId: null, orderName: null };
+    const o = out.order;
+    batch.parent = {
+      orderId: o.id,
+      orderName: o.name,
+      invoiceUrl: (o.paymentCollectionDetails && o.paymentCollectionDetails.additionalPaymentCollectionUrl) || null,
+      financialStatus: 'PENDING'
+    };
     batch.status = 'awaiting_payment';
-    batch.log.push({ at: now(), msg: `Parent draft ${d.name} created for $${d.totalPriceSet.shopMoney.amount}.` });
-    if (toCents(d.totalPriceSet.shopMoney.amount) !== t.total) {
-      batch.log.push({ at: now(), msg: `WARNING: parent total $${d.totalPriceSet.shopMoney.amount} does not match quoted $${fromCents(t.total)}.` });
+    batch.log.push({ at: now(), msg: `Invoice ${o.name} created for $${o.totalPriceSet.shopMoney.amount} (${taxes.length} tax line${taxes.length === 1 ? '' : 's'}).` });
+    if (toCents(o.totalPriceSet.shopMoney.amount) !== t.total) {
+      batch.log.push({ at: now(), msg: `WARNING: invoice total $${o.totalPriceSet.shopMoney.amount} does not match quoted $${fromCents(t.total)}.` });
+    }
+    if (taxTotal !== t.tax) {
+      batch.log.push({ at: now(), msg: `WARNING: tax lines total $${fromCents(taxTotal)} but recipients were quoted $${fromCents(t.tax)}.` });
     }
   } catch (err) {
     if (err.status) throw err;
@@ -202,7 +245,7 @@ export async function createBatchWithInvoice(batch) {
     batch.log.push({
       at: now(),
       msg: err instanceof AmbiguousWriteError
-        ? `${err.message} Check Shopify for a draft order tagged ${tagPrefix}${batch.id} before trying again.`
+        ? `${err.message} Check Shopify for an order tagged ${tagPrefix}${batch.id} before trying again.`
         : `Invoice not created: ${err.message}`
     });
     await saveBatch(batch);
@@ -214,11 +257,11 @@ export async function createBatchWithInvoice(batch) {
 }
 
 export async function sendInvoice(batch, customMessage) {
-  const vars = { id: batch.parent.draftId };
+  const vars = { id: batch.parent.orderId };
   if (customMessage) vars.email = { to: batch.buyer.email, customMessage };
-  const out = (await gql(SEND, vars)).draftOrderInvoiceSend;
+  const out = (await gql(SEND, vars)).orderInvoiceSend;
   if (out.userErrors.length) throw new Error(out.userErrors.map((e) => e.message).join('; '));
-  batch.parent.invoiceSentAt = out.draftOrder.invoiceSentAt;
+  batch.parent.invoiceSentAt = now();
   batch.log.push({ at: now(), msg: `Invoice emailed to ${batch.buyer.email}.` });
   return batch;
 }
@@ -227,31 +270,40 @@ export async function sendInvoice(batch, customMessage) {
 
 const PARENT = `
   query ParentStatus($id: ID!) {
-    draftOrder(id: $id) { id name status invoiceUrl order { id name displayFinancialStatus } }
+    order(id: $id) {
+      id name displayFinancialStatus cancelledAt
+      paymentCollectionDetails { additionalPaymentCollectionUrl }
+    }
   }`;
 
-/* Ask Shopify whether the parent is paid. Saves and returns true if the
+/* Ask Shopify whether the invoice is paid. Saves and returns true if the
    batch changed. */
 export async function refreshPayment(batch) {
   if (batch.status !== 'awaiting_payment' || !batch.parent) return false;
-  const d = (await gql(PARENT, { id: batch.parent.draftId })).draftOrder;
-  if (!d) {
+  const o = (await gql(PARENT, { id: batch.parent.orderId })).order;
+  if (!o) {
     batch.status = 'cancelled';
-    batch.log.push({ at: now(), msg: 'Parent draft order no longer exists in Shopify.' });
+    batch.log.push({ at: now(), msg: 'Invoice order no longer exists in Shopify.' });
     await saveBatch(batch);
     return true;
   }
-  if (!d.order) return false;
-  batch.parent.orderId = d.order.id;
-  batch.parent.orderName = d.order.name;
-  batch.parent.financialStatus = d.order.displayFinancialStatus;
-  if (d.order.displayFinancialStatus === 'PAID') {
+  if (o.cancelledAt) {
+    batch.status = 'cancelled';
+    batch.log.push({ at: now(), msg: `Invoice ${o.name} was cancelled in Shopify.` });
+    await saveBatch(batch);
+    return true;
+  }
+  batch.parent.financialStatus = o.displayFinancialStatus;
+  batch.parent.invoiceUrl = (o.paymentCollectionDetails && o.paymentCollectionDetails.additionalPaymentCollectionUrl) || batch.parent.invoiceUrl;
+  if (['PAID', 'PARTIALLY_REFUNDED'].includes(o.displayFinancialStatus)) {
     batch.status = 'paid';
     batch.paidAt = now();
-    batch.log.push({ at: now(), msg: `Parent order ${d.order.name} is paid.` });
+    batch.log.push({ at: now(), msg: `Invoice ${o.name} is paid.` });
+    await saveBatch(batch);
+    return true;
   }
   await saveBatch(batch);
-  return true;
+  return false;
 }
 
 export const autoReleases = (batch) =>
