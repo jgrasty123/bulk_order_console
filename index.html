@@ -15,13 +15,29 @@
 </head>
 <body>
 
+<dialog id="contact" class="modal">
+  <div>
+    <p class="eyebrow">We're here to help</p>
+    <h2>Questions about a corporate order?</h2>
+    <p class="muted">Email us and we'll come back to you — usually the same business day.</p>
+    <div class="contact__row">
+      <a class="contact__value" id="contactMail" href="#">info@thebrobasket.com</a>
+      <button class="btn" type="button" id="copyMail">Copy</button>
+    </div>
+    <p class="contact__row" id="contactPhoneRow" hidden>
+      <a class="contact__value" id="contactPhone" href="#"></a>
+    </p>
+    <div class="modal__actions"><button class="btn" type="button" id="contactClose">Close</button></div>
+  </div>
+</dialog>
+
 <header class="bar">
   <a class="brand" href="/"><img class="brand__logo" src="/assets/brobasket-logo.png" alt="The BroBasket" width="44" height="44"><span class="brand__name">The BroBasket</span><span class="brand__sub">Corporate gifting</span></a>
   <nav class="nav" aria-label="Main">
     <a class="nav__link" id="homeLink" href="#">Home</a>
     <button type="button" class="nav__link" id="navChoose">Choose Your Gifts</button>
     <button type="button" class="nav__link" id="navUpload">Upload My Gift List</button>
-    <a class="nav__link nav__link--quiet" id="helpLink" href="#">Questions?</a>
+    <button type="button" class="nav__link nav__link--quiet" id="helpLink">Questions?</button>
   </nav>
 </header>
 
@@ -203,7 +219,7 @@
 </main>
 
 <footer class="foot">
-  <p>The BroBasket corporate gifting · <a id="footHelp" href="#">Contact us</a></p>
+  <p>The BroBasket corporate gifting · <button type="button" class="linky" id="footHelp">Contact us</button></p>
 </footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>

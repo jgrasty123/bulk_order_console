@@ -76,10 +76,12 @@
   },
   "publicSite": {
     "brandName": "The BroBasket",
-    "supportEmail": "james@thebevconnect.com",
+    "supportEmail": "info@thebrobasket.com",
     "turnstileSiteKey": "",
     "_turnstileNote": "Optional Cloudflare Turnstile bot check on submit. Set the site key here and TURNSTILE_SECRET_KEY in Netlify to turn it on.",
     "homeUrl": "https://www.thebrobasket.com",
-    "_homeNote": "Where the Home link in the portal header goes — the main storefront."
+    "_homeNote": "Where the Home link in the portal header goes — the main storefront.",
+    "supportPhone": "",
+    "_supportNote": "Shown in the Questions panel on the portal. A mailto link alone is unreliable — browsers without a mail app do nothing on click — so the address is also shown with a copy button. Add a phone number here and it appears too."
   }
 }
