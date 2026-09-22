@@ -57,12 +57,13 @@
       "bulk-parent"
     ],
     "batchTagPrefix": "batch-",
-    "sourceName": "bulk-order-console",
+    "sourceName": "Corporate Order Portal",
     "autoRelease": {
       "customer": true,
       "staff": false
     },
-    "_autoReleaseNote": "customer: recipient orders are created automatically as soon as Shopify reports the invoice paid. staff: staff press Release."
+    "_autoReleaseNote": "customer: recipient orders are created automatically as soon as Shopify reports the invoice paid. staff: staff press Release.",
+    "_sourceNote": "Shown on orders as the source. Shopify also labels orders with the app that created them — rename the app itself in Settings → Apps → Develop apps to change that."
   },
   "catalog": {
     "variantQuery": "sku:BSKT-* AND product_status:active",

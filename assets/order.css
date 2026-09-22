@@ -217,3 +217,6 @@ tr.row-err td.c-n { color: var(--bad); font-weight: 600; }
 .field--code input { text-transform: uppercase; }
 #codeNote.good { color: var(--ok); font-weight: 600; }
 #codeNote.bad { color: var(--bad); }
+
+.btn--quiet { border-color: transparent; color: var(--ink-2); }
+.btn--quiet:hover { border-color: var(--rule-2); color: var(--ink); }

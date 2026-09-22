@@ -169,6 +169,7 @@ export async function createBatchWithInvoice(batch) {
   const order = {
     email: batch.buyer.email,
     financialStatus: 'PENDING',                 // unpaid until they pay the invoice
+    sourceName: rules.orderDefaults.sourceName,
     currency: rules.pricing.currencyCode,
     lineItems: products.map((p) => ({
       variantId: p.variantId,
