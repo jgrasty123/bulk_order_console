@@ -312,7 +312,7 @@ const person = (i, state = 'CA', zip = '90001') => ({
   city: 'Town', state, zip, phone: '8055550100', email: '', giftMessage: `Thanks Pat${i}`, lines: [{ sku: 'BSKT-053', qty: 1 }] });
 
 console.log('\nPublic: quote');
-const small = [person(1), person(2, 'TX', '73301')];
+const small = [{ ...person(1), deliveryDate: '2099-12-18' }, person(2, 'TX', '73301')];
 let pq = await pub('order-quote', { body: { recipients: small, batchSize: 2 } });
 ok(pq.status === 200 && pq.data.discountPct === 0, 'under 20 recipients: no discount');
 ok(pq.data.quotes.k1.shippingTitle === 'UPS® Ground' && pq.data.quotes.k1.sig, 'live Ground rate, quote signed');
@@ -337,7 +337,7 @@ const cheat = [person(5)].map(r => ({ ...r, quote: big.data.quotes.k5 })).concat
 ok((await pub('order-submit', { body: { buyer: buyerP, recipients: cheat } })).data.error === 'bad_quote', 'a 20+ discount cannot be used on a smaller order');
 
 const draftsBefore = Object.keys(S.drafts).length;
-const sub = await pub('order-submit', { body: { buyer: buyerP, recipients: withQ } });
+const sub = await pub('order-submit', { body: { buyer: buyerP, recipients: withQ, deliveryDate: '2099-12-01' } });
 ok(sub.status === 200 && sub.data.invoiceUrl && sub.data.statusUrl, 'valid order: invoice created, checkout link returned');
 const pd = Object.values(S.drafts)[draftsBefore];
 ok(pd.input.tags.includes('bulk-source-customer') && pd.input.email === 'jo@acme.test', 'parent tagged as a customer order, billed to the buyer');
@@ -366,6 +366,8 @@ const made = S.orders.slice(ordersBefore);
 ok(made.length === 2, 'payment alone created both recipient orders — nobody pressed Release');
 ok(made.every(o => o.input.shippingLines[0].title === 'UPS® Ground'), 'recipient orders carry the real service name for ShipStation');
 ok(made.every(o => o.input.tags.includes(`batch-${sb}`) && o.input.customAttributes.some(a => a.key === 'Gift Message')), 'tagged to the batch with gift message');
+const dateOf = (first) => (made.find(o => o.input.shippingAddress.firstName === first).input.customAttributes.find(a => a.key === 'Delivery Date') || {}).value;
+ok(dateOf('Pat1') === '2099-12-18' && dateOf('Pat2') === '2099-12-01', 'each recipient keeps their own delivery date; the rest get the default');
 
 await pub('shopify-webhook', { body: payload, headers: { 'x-shopify-hmac-sha256': hmac } });
 await Promise.all(S.bgRuns || []);
