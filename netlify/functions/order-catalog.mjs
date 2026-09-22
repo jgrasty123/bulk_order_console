@@ -11,7 +11,7 @@ export default async (req) => {
   try {
     const items = await loadCatalog();
     return new Response(JSON.stringify({
-      items: items.map(({ sku, title, price, available, image }) => ({ sku, title, price, available, image }))
+      items: items.map(({ sku, title, price, available, image, kind }) => ({ sku, title, price, available, image, kind }))
     }), { status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=300' } });
   } catch (err) {
     return fail(err);

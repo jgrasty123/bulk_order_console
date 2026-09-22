@@ -33,18 +33,23 @@ export async function loadCatalog({ fresh = false } = {}) {
     const hit = await store.get('catalog', { type: 'json' });
     if (hit && Date.now() - hit.at < CATALOG_TTL_MS) return hit.items;
   }
+  const skip = new Set(rules.catalog.excludeSkus || []);
+  const skipTitle = (rules.catalog.excludeTitlePatterns || []).map((p) => new RegExp(p, 'i'));
   const items = [];
   let after = null;
   do {
     const data = await gql(CATALOG, { q: rules.catalog.variantQuery, after });
     for (const { node } of data.productVariants.edges) {
       if (!node.sku || node.product.status !== 'ACTIVE') continue;
+      // Add-on services and other non-gifts never belong in a corporate list.
+      if (skip.has(node.sku) || skipTitle.some((re) => re.test(node.product.title))) continue;
       items.push({
         sku: node.sku,
         variantId: node.id,
         title: displayTitle(node.product.title) + (node.title && node.title !== 'Default Title' ? ` — ${node.title}` : ''),
         price: node.price,
         available: node.availableForSale,
+        kind: node.product.productType || '',
         image: (node.product.featuredMedia && node.product.featuredMedia.preview &&
                 node.product.featuredMedia.preview.image && node.product.featuredMedia.preview.image.url) || null
       });
