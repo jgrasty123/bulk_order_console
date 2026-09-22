@@ -10,7 +10,7 @@
 import {
   checkRecipient, groupRows, mergeMessage, discountFor, isAdult, normaliseState, clean, EMAIL_RE
 } from '/shared/rules.mjs';
-import { buildIndex, matchGift, displayTitle } from '/shared/giftmatch.mjs';
+import { buildIndex, matchGift, rankGifts, displayTitle } from '/shared/giftmatch.mjs';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -71,16 +71,154 @@ async function init() {
   } catch {
     showIssues([{ sev: 'stop', msg: 'Our gift list didn’t load. Please refresh the page.' }]);
   }
-  $('giftAll').insertAdjacentHTML('beforeend', giftOptions(''));
+  wireGiftBox($('giftAll'));
 
   addRow(); addRow();
   wire();
   if (CONFIG.publicSite.turnstileSiteKey) loadTurnstile(CONFIG.publicSite.turnstileSiteKey);
 }
 
-const giftOptions = (selected) => [...catalog.values()].map((i) =>
-  `<option value="${esc(i.sku)}"${i.sku === selected ? ' selected' : ''}${i.available ? '' : ' disabled'}>` +
-  `${esc(i.title)} — $${esc(i.price)}${i.available ? '' : ' (sold out)'}</option>`).join('');
+/* --- Gift search ----------------------------------------------------------------
+   One floating menu shared by every gift box on the page — 300 rows must not
+   mean 300 dropdowns. Type any part of a name ("whiskey", "bbq", a SKU) and
+   the closest gifts come up; nothing is chosen until you pick one.
+   ---------------------------------------------------------------------------------- */
+
+let menu, menuFor = null, menuItems = [], active = -1;
+
+function buildMenu() {
+  menu = document.createElement('div');
+  menu.className = 'gift-menu';
+  menu.hidden = true;
+  menu.innerHTML = '<ul role="listbox"></ul>';
+  document.body.appendChild(menu);
+
+  menu.addEventListener('mousedown', (e) => {
+    const li = e.target.closest('li[data-sku]');
+    if (!li) return;
+    e.preventDefault();                       // keep focus, don't fire blur first
+    choose(li.dataset.sku);
+  });
+  window.addEventListener('resize', closeMenu);
+  window.addEventListener('scroll', () => { if (menuFor) place(menuFor); }, true);
+  document.addEventListener('mousedown', (e) => {
+    if (menuFor && !menu.contains(e.target) && e.target !== menuFor) closeMenu();
+  });
+}
+
+function place(input) {
+  const r = input.getBoundingClientRect();
+  menu.style.left = `${Math.min(r.left, window.innerWidth - 360)}px`;
+  menu.style.top = `${r.bottom + 2}px`;
+  menu.style.width = `${Math.max(r.width, 320)}px`;
+}
+
+function openMenu(input) {
+  if (!menu) buildMenu();
+  menuFor = input;
+  active = -1;
+  const hits = rankGifts(input.value, giftIndex, 30);
+  menuItems = hits.map((h) => h.sku);
+  menu.querySelector('ul').innerHTML = hits.length
+    ? hits.map((h, n) => {
+        const i = catalog.get(h.sku);
+        return `<li role="option" data-sku="${esc(h.sku)}" aria-selected="false" id="gift-opt-${n}">` +
+          `<span>${esc(i.title)}${i.available ? '' : ' <span class="sold">(sold out)</span>'}</span>` +
+          `<span class="price">$${esc(i.price)}</span></li>`;
+      }).join('')
+    : '<li class="empty">No gifts match that. Try fewer words.</li>';
+  menu.hidden = false;
+  input.setAttribute('aria-expanded', 'true');
+  place(input);
+}
+
+function closeMenu() {
+  if (!menu) return;
+  menu.hidden = true;
+  if (menuFor) menuFor.setAttribute('aria-expanded', 'false');
+  menuFor = null; menuItems = []; active = -1;
+}
+
+function highlight(n) {
+  const lis = [...menu.querySelectorAll('li[data-sku]')];
+  lis.forEach((li, i) => li.setAttribute('aria-selected', String(i === n)));
+  if (lis[n]) lis[n].scrollIntoView({ block: 'nearest' });
+  active = n;
+}
+
+function choose(sku) {
+  const input = menuFor;
+  const item = catalog.get(sku);
+  if (!input || !item) return closeMenu();
+  input.value = item.title;
+  input.dataset.picked = '1';          // this box is settled; ignore its late blur
+  if (input.dataset.matchGroup !== undefined) {
+    const g = ($('matchPanel')._groups || [])[+input.dataset.matchGroup];
+    closeMenu();
+    if (g) settle(g, sku);                 // applies to every row with that name
+    return;
+  }
+  if (input.id === 'giftAll') input.dataset.sku = sku;
+  else {
+    const r = rows.find((x) => x.id === Number(input.closest('tr').dataset.id));
+    r.sku = sku; r.giftText = ''; r.match = 'ok';
+    input.closest('td').classList.remove('bad', 'warn');
+    invalidate(); updateCount(); renderMatches();
+  }
+  closeMenu();
+}
+
+/* Left the box with free text? Fall back to the same matcher the spreadsheet
+   uses: take a confident match, otherwise leave it for "Check your gifts". */
+function settleTyped(input) {
+  if (input.dataset.matchGroup !== undefined) {
+    const g = ($('matchPanel')._groups || [])[+input.dataset.matchGroup];
+    const m = matchGift(input.value, giftIndex);
+    if (g && ['exact', 'likely'].includes(m.confidence)) settle(g, m.sku);
+    return;
+  }
+  if (input.id === 'giftAll') {
+    const m = matchGift(input.value, giftIndex);
+    input.dataset.sku = ['exact', 'likely'].includes(m.confidence) ? m.sku : '';
+    if (input.dataset.sku) input.value = catalog.get(m.sku).title;
+    return;
+  }
+  const r = rows.find((x) => x.id === Number(input.closest('tr').dataset.id));
+  const text = input.value.trim();
+  if (!text) { r.sku = ''; r.giftText = ''; r.match = 'ok'; invalidate(); updateCount(); renderMatches(); return; }
+  if (r.sku && catalog.has(r.sku) && catalog.get(r.sku).title === text) return;   // unchanged
+  const m = matchGift(text, giftIndex);
+  if (['exact', 'likely'].includes(m.confidence)) {
+    r.sku = m.sku; r.giftText = ''; r.match = 'ok';
+    input.value = catalog.get(m.sku).title;
+  } else {
+    r.sku = ''; r.giftText = text; r.match = m.confidence; r.candidates = m.candidates;
+  }
+  invalidate(); updateCount(); renderMatches();
+}
+
+function wireGiftBox(el) {
+  el.addEventListener('focus', () => openMenu(el));
+  el.addEventListener('input', () => { openMenu(el); });
+  // Blur is handled after a tick so a click on the menu lands first. By then
+  // the box may have been replaced by a re-render — settling a detached box
+  // would apply its value to whatever now sits in its old position.
+  el.addEventListener('blur', () => {
+    setTimeout(() => {
+      if (menuFor === el || el.dataset.picked || !el.isConnected) return;
+      settleTyped(el);
+    }, 0);
+  });
+  el.addEventListener('keydown', (e) => {
+    if (menuFor !== el && ['ArrowDown', 'ArrowUp'].includes(e.key)) return openMenu(el);
+    if (!menuItems.length) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); highlight(Math.min(active + 1, menuItems.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); highlight(Math.max(active - 1, 0)); }
+    else if (e.key === 'Enter') { e.preventDefault(); choose(menuItems[active >= 0 ? active : 0]); }
+    else if (e.key === 'Escape') { closeMenu(); }
+    else if (e.key === 'Tab' && active >= 0) { choose(menuItems[active]); }
+  });
+}
 
 /* --- Helpers for per-row message and date --------------------------------------- */
 
@@ -132,8 +270,12 @@ function renderRows(issueMap = new Map()) {
     tr.innerHTML = `<td class="c-n">${i + 1}</td>` + COLS.map((c) => {
       const cls = [c.cls, bad.stop.has(c.key) ? 'bad' : bad.warn.has(c.key) ? 'warn' : ''].filter(Boolean).join(' ');
       if (c.select) {
-        const hint = r.giftText && !r.sku ? ` title="You wrote: ${esc(r.giftText)}"` : '';
-        return `<td class="${cls}"${hint}><select data-k="sku" aria-label="Gift, row ${i + 1}"><option value="">${r.giftText && !r.sku ? `“${esc(r.giftText)}” — choose…` : 'Choose a gift…'}</option>${giftOptions(r.sku)}</select></td>`;
+        const chosen = r.sku && catalog.has(r.sku) ? catalog.get(r.sku).title : '';
+        const typed = !chosen && r.giftText ? r.giftText : '';
+        return `<td class="${cls}"><input class="gift-pick" data-gift value="${esc(chosen || typed)}"` +
+          ` placeholder="Search gifts…" aria-label="Gift, row ${i + 1}" autocomplete="off"` +
+          ` role="combobox" aria-expanded="false" aria-autocomplete="list"` +
+          ` data-lpignore="true" data-1p-ignore></td>`;
       }
       const ph = c.key === 'giftMessage' ? previewFor(r) : '';
       return `<td class="${cls}"><input data-k="${c.key}" value="${esc(r[c.key])}" aria-label="${c.label}, row ${i + 1}"` +
@@ -143,6 +285,7 @@ function renderRows(issueMap = new Map()) {
     frag.appendChild(tr);
   });
   body.appendChild(frag);
+  body.querySelectorAll('input[data-gift]').forEach(wireGiftBox);
   $('emptyNote').hidden = rows.length > 0;
   updateCount();
 }
@@ -227,21 +370,26 @@ function renderMatches() {
   const others = (skip) => [...catalog.values()].filter((i) => !skip.includes(i.sku))
     .map((i) => `<option value="${esc(i.sku)}">${esc(i.title)} — $${esc(i.price)}</option>`).join('');
   $('matchList').innerHTML = list.map((g, n) => {
-    const best = g.candidates.filter((s) => catalog.has(s));
-    const opts = `<option value="">${g.state === 'likely' ? 'Choose…' : 'Pick the gift you meant…'}</option>` +
-      (best.length ? `<optgroup label="Best matches">${best.map((s) => {
-        const i = catalog.get(s);
-        return `<option value="${esc(s)}"${s === g.sku ? ' selected' : ''}>${esc(i.title)} — $${esc(i.price)}</option>`;
-      }).join('')}</optgroup>` : '') +
-      `<optgroup label="All gifts">${others(best)}</optgroup>`;
+    const best = g.candidates.filter((sku) => catalog.has(sku));
+    const seeded = g.sku && catalog.has(g.sku) ? catalog.get(g.sku).title : '';
     const tag = g.state === 'likely' ? '<span class="tag tag--ok">Matched</span>'
       : g.state === 'none' ? '<span class="tag tag--bad">No match</span>' : '<span class="tag tag--warn">Pick one</span>';
+    const hint = best.length && !seeded
+      ? `<small class="muted">Did you mean ${esc(catalog.get(best[0]).title)}?</small>` : '';
     return `<li data-n="${n}">${tag}
       <span class="match__typed">“${esc(g.text)}”<small>${g.rows.length} row${g.rows.length === 1 ? '' : 's'}</small></span>
       <span class="match__arrow">→</span>
-      <select data-match="${n}" aria-label="Gift for “${esc(g.text)}”">${opts}</select>
+      <span class="match__pick">
+        <input class="gift-pick" data-gift data-match-group="${n}" value="${esc(seeded)}"
+          placeholder="${best.length ? esc(catalog.get(best[0]).title) : 'Search gifts…'}"
+          aria-label="Gift for “${esc(g.text)}”" autocomplete="off" role="combobox"
+          aria-expanded="false" aria-autocomplete="list" data-lpignore="true" data-1p-ignore>
+        ${hint}
+      </span>
       ${g.state === 'likely' ? `<button type="button" class="btn" data-confirm="${n}">Confirm</button>` : '<span></span>'}</li>`;
   }).join('');
+  $('matchList').querySelectorAll('input[data-gift]').forEach(wireGiftBox);
+
   const likely = list.filter((g) => g.state === 'likely' && g.sku).length;
   $('confirmAll').hidden = likely < 2;
   $('confirmAll').textContent = `Confirm all ${likely} matches`;
@@ -254,12 +402,7 @@ function settle(g, sku) {
 }
 
 function wireMatches() {
-  $('matchList').addEventListener('change', (e) => {
-    const n = e.target.dataset.match; if (n === undefined) return;
-    const g = $('matchPanel')._groups[+n];
-    // Choosing from the list is the decision — apply it straight away.
-    if (e.target.value) settle(g, e.target.value);
-  });
+
   $('matchList').addEventListener('click', (e) => {
     const n = e.target.dataset.confirm; if (n === undefined) return;
     const g = $('matchPanel')._groups[+n];
@@ -533,11 +676,15 @@ function wire() {
   $('addRow').addEventListener('click', () => { addRow(); invalidate(); renderRows();
     const last = $('rows').lastElementChild; if (last) last.querySelector('input').focus(); });
   $('applyAll').addEventListener('click', () => {
-    const sku = $('giftAll').value; if (!sku) return;
-    rows.forEach((r) => { r.sku = sku; }); invalidate(); renderRows();
+    settleTyped($('giftAll'));
+    const sku = $('giftAll').dataset.sku;
+    if (!sku) { $('giftAll').focus(); return; }
+    rows.forEach((r) => { r.sku = sku; r.giftText = ''; r.match = 'ok'; });
+    invalidate(); renderRows(); renderMatches();
   });
   $('rows').addEventListener('input', (e) => {
     const tr = e.target.closest('tr'); if (!tr) return;
+    if (e.target.dataset.gift !== undefined) return;
     const r = rows.find((x) => x.id === Number(tr.dataset.id));
     r[e.target.dataset.k] = e.target.value;
     if (e.target.dataset.k === 'sku') { r.match = 'ok'; renderMatches(); }

@@ -3,7 +3,7 @@
    ambiguous we ask; we never silently guess a basket. */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildIndex, matchGift } from '../shared/giftmatch.mjs';
+import { buildIndex, matchGift, rankGifts } from '../shared/giftmatch.mjs';
 
 const items = JSON.parse(readFileSync(new URL('./fixtures-catalog.json', import.meta.url)));
 const idx = buildIndex(items);
@@ -24,4 +24,12 @@ const cl = m('Coffee Lovers');
 ok(!cl.sku && cl.candidates.slice(0, 2).every((s) => /coffee lovers/i.test(title(s))), 'several "Coffee Lovers" products → ask, best ones first');
 ok(/n\/a/i.test(title(m('non alcoholic beer').candidates[0])), '"non alcoholic beer" suggests the N/A products first');
 ok(m('').confidence === 'none' && m('zzqx').sku === '', 'nonsense never matches');
+console.log('\nGift search (what someone types into the search box)');
+const top = (q, k = 3) => rankGifts(q, idx, k).map((i) => i.title);
+ok(top('whis').some((t) => /Whiskey/i.test(t)), 'partial word finds whiskey gifts — a native dropdown could not');
+ok(top('bbq').every((t) => /BBQ/i.test(t)), 'short query returns only relevant gifts');
+ok(top('coffee lovers')[0].toLowerCase().includes('coffee lovers'), 'multi-word query ranks the closest name first');
+ok(rankGifts('zzzz', idx).length === 0, 'nonsense returns nothing rather than noise');
+ok(rankGifts('', idx, 5).length === 5, 'an empty box still shows gifts to browse');
+
 console.log(`\n${n} matching checks passed.\n`);

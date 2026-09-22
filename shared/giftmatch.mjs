@@ -55,6 +55,28 @@ function score(q, t) {
   return 0.7 * (hit / q.length) + 0.3 * (covered / t.length);
 }
 
+/* Gifts ranked for a search box: what someone types as they look for a
+   product, rather than what a spreadsheet says. Plain substring matches
+   rank hardest, because typing "whis" means "show me whiskey things". */
+export function rankGifts(query, index, limit = 30) {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return index.slice(0, limit);
+  const toks = tokens(q);
+  return index
+    .map((i) => {
+      const title = i.title.toLowerCase();
+      let s = score(toks, i.toks);
+      if (title.startsWith(q)) s += 1;
+      else if (title.includes(q)) s += 0.7;
+      else if (title.split(/\s+/).some((w) => w.startsWith(q))) s += 0.5;
+      if (i.sku.toLowerCase().includes(q)) s += 0.8;
+      return { ...i, s };
+    })
+    .filter((i) => i.s > 0.2)
+    .sort((a, b) => b.s - a.s || a.title.localeCompare(b.title))
+    .slice(0, limit);
+}
+
 /**
  * → { sku, confidence: 'exact' | 'likely' | 'unsure' | 'none', candidates: [sku…] }
  */
