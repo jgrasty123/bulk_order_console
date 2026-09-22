@@ -9,10 +9,18 @@
 
 # Active development: never let a stale app.js survive a structural change.
 # Tighten these once the tool stops changing weekly.
+# Asset URLs carry a content hash (tools/stamp-assets.mjs), so a stale copy
+# can never be served against newer markup — cache them hard.
 [[headers]]
   for = "/assets/*"
   [headers.values]
-    Cache-Control = "max-age=0, must-revalidate"
+    Cache-Control = "public, max-age=31536000"
+
+# The pages themselves must always be re-checked, since they carry the hashes.
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
 
 [[headers]]
   for = "/config/*"
