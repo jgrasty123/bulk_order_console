@@ -68,9 +68,10 @@
     <div class="sheet" id="sheetWrap">
       <table class="sheet__table">
         <thead><tr>
-          <th class="c-n">#</th><th>First name</th><th>Last name</th><th class="c-gift">Gift</th><th class="c-qty">Qty</th>
-          <th>Company</th><th>Street address</th><th>Apt / suite</th><th>City</th><th class="c-st">State</th><th class="c-zip">ZIP</th>
-          <th>Phone</th><th class="c-x"><span class="sr">Remove</span></th>
+          <th class="c-n">#</th><th class="c-first">First name</th><th class="c-last">Last name</th><th class="c-gift">Gift</th><th class="c-qty">Qty</th>
+          <th class="c-msg">Gift message</th><th class="c-date">Deliver on</th>
+          <th>Company</th><th class="c-addr">Street address</th><th>Apt / suite</th><th>City</th><th class="c-st">State</th><th class="c-zip">ZIP</th>
+          <th>Phone</th><th class="c-email">Email</th><th class="c-x"><span class="sr">Remove</span></th>
         </tr></thead>
         <tbody id="rows"></tbody>
       </table>
@@ -79,15 +80,15 @@
     <p class="count" id="countLine"></p>
 
     <div class="grid2">
-      <label class="field"><span>Gift message <em>optional</em></span>
+      <label class="field"><span>Default gift message <em>optional</em></span>
         <textarea id="message" rows="3" maxlength="500" placeholder="Hi {first_name}, thanks for a great year!"></textarea>
         <small class="muted">Use <button type="button" class="chip" data-merge="{first_name}">{first_name}</button>
-          <button type="button" class="chip" data-merge="{company}">{company}</button> to personalize. A message in your spreadsheet overrides this for that person.</small>
+          <button type="button" class="chip" data-merge="{company}">{company}</button> to personalize. Anyone with their own message in the table keeps theirs.</small>
         <small class="preview" id="msgPreview"></small>
       </label>
-      <label class="field"><span>Deliver on <em>optional</em></span>
+      <label class="field"><span>Default delivery date <em>optional</em></span>
         <input type="date" id="deliveryDate">
-        <small class="muted">Leave blank to ship as soon as possible.</small>
+        <small class="muted">For anyone without their own date. Leave blank to ship as soon as possible.</small>
       </label>
     </div>
 
@@ -99,12 +100,12 @@
   <section class="step" id="step2" hidden>
     <header class="step__head">
       <span class="step__num">2</span>
-      <div><h2>Your price</h2><p class="muted">Priced to each address with live UPS Ground rates and tax.</p></div>
+      <div><h2>Review &amp; price</h2><p class="muted">Check every recipient below — address, gift, message and date. Priced to each address with live UPS Ground rates and tax.</p></div>
     </header>
     <div class="progress" id="progress" hidden><div class="progress__bar" id="progressBar"></div><span id="progressLabel"></span></div>
     <div id="priceResult" hidden>
       <div class="sheet"><table class="sheet__table sheet__table--read">
-        <thead><tr><th>Recipient</th><th>Destination</th><th>Gift</th><th>Shipping</th><th class="num">Tax</th><th class="num">Total</th></tr></thead>
+        <thead><tr><th>Recipient</th><th>Ship to</th><th>Gift</th><th>Gift message</th><th>Deliver on</th><th>Shipping</th><th class="num">Tax</th><th class="num">Total</th></tr></thead>
         <tbody id="priceRows"></tbody>
       </table></div>
       <div class="summary" id="summary"></div>

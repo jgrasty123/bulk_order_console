@@ -17,21 +17,25 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const usd = (c) => '$' + (c / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const COLS = [
-  { key: 'firstName', label: 'First name' },
-  { key: 'lastName', label: 'Last name' },
+  { key: 'firstName', label: 'First name', cls: 'c-first' },
+  { key: 'lastName', label: 'Last name', cls: 'c-last' },
   { key: 'sku', label: 'Gift', cls: 'c-gift', select: true },
   { key: 'qty', label: 'Qty', cls: 'c-qty', mode: 'numeric' },
+  { key: 'giftMessage', label: 'Gift message', cls: 'c-msg' },
+  { key: 'deliveryDate', label: 'Deliver on', cls: 'c-date', type: 'date' },
   { key: 'company', label: 'Company' },
-  { key: 'address1', label: 'Street address' },
+  { key: 'address1', label: 'Street address', cls: 'c-addr' },
   { key: 'address2', label: 'Apt / suite' },
   { key: 'city', label: 'City' },
   { key: 'state', label: 'State', cls: 'c-st' },
   { key: 'zip', label: 'ZIP', cls: 'c-zip', mode: 'numeric' },
-  { key: 'phone', label: 'Phone', mode: 'tel' }
+  { key: 'phone', label: 'Phone', mode: 'tel' },
+  { key: 'email', label: 'Email', cls: 'c-email', mode: 'email' }
 ];
 const FIELD_TO_COLS = {
   firstName: ['firstName'], lastName: ['lastName'], address1: ['address1'], city: ['city'],
-  state: ['state'], zip: ['zip'], phone: ['phone'], lines: ['sku', 'qty']
+  state: ['state'], zip: ['zip'], phone: ['phone'], email: ['email'], lines: ['sku', 'qty'],
+  giftMessage: ['giftMessage'], deliveryDate: ['deliveryDate']
 };
 
 // Spreadsheet headings we understand, normalised → our field.
@@ -45,7 +49,9 @@ const HEADERS = {
   phone: 'phone', phone_number: 'phone', email: 'email',
   gift_sku: 'giftText', sku: 'giftText', gift: 'giftText', gift_name: 'giftText', product: 'giftText',
   product_name: 'giftText', item: 'giftText', basket: 'giftText',
-  qty: 'qty', quantity: 'qty', gift_message: 'giftMessage', message: 'giftMessage', note: 'giftMessage'
+  qty: 'qty', quantity: 'qty', gift_message: 'giftMessage', message: 'giftMessage', note: 'giftMessage',
+  card_message: 'giftMessage', delivery_date: 'deliveryDate', deliver_on: 'deliveryDate', ship_date: 'deliveryDate',
+  date: 'deliveryDate'
 };
 
 let CONFIG, catalog = new Map(), giftIndex = [], rows = [], seq = 1;
@@ -76,6 +82,37 @@ const giftOptions = (selected) => [...catalog.values()].map((i) =>
   `<option value="${esc(i.sku)}"${i.sku === selected ? ' selected' : ''}${i.available ? '' : ' disabled'}>` +
   `${esc(i.title)} — $${esc(i.price)}${i.available ? '' : ' (sold out)'}</option>`).join('');
 
+/* --- Helpers for per-row message and date --------------------------------------- */
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+// What a blank message cell will actually send, shown as grey placeholder text.
+function previewFor(r) {
+  const t = $('message') ? $('message').value : '';
+  return t ? mergeMessage(t, r) : 'No message';
+}
+
+// Spreadsheets arrive as 2026-12-15, 12/15/2026, 12/15/26, or "Dec 15 2026".
+function isoDate(v) {
+  const s = clean(v);
+  if (!s) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  let m = /^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/.exec(s);
+  if (m) {
+    const y = m[3].length === 2 ? '20' + m[3] : m[3];
+    return `${y}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`;
+  }
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? s : d.toISOString().slice(0, 10);
+}
+
+function refreshPreviews() {
+  document.querySelectorAll('#rows input[data-k="giftMessage"]').forEach((el) => {
+    const r = rows.find((x) => x.id === Number(el.closest('tr').dataset.id));
+    el.placeholder = previewFor(r);
+  });
+}
+
 /* --- Rows ---------------------------------------------------------------------- */
 
 function addRow(data = {}) {
@@ -98,8 +135,10 @@ function renderRows(issueMap = new Map()) {
         const hint = r.giftText && !r.sku ? ` title="You wrote: ${esc(r.giftText)}"` : '';
         return `<td class="${cls}"${hint}><select data-k="sku" aria-label="Gift, row ${i + 1}"><option value="">${r.giftText && !r.sku ? `“${esc(r.giftText)}” — choose…` : 'Choose a gift…'}</option>${giftOptions(r.sku)}</select></td>`;
       }
+      const ph = c.key === 'giftMessage' ? previewFor(r) : '';
       return `<td class="${cls}"><input data-k="${c.key}" value="${esc(r[c.key])}" aria-label="${c.label}, row ${i + 1}"` +
-        `${c.mode ? ` inputmode="${c.mode}"` : ''} autocomplete="off"></td>`;
+        `${c.type ? ` type="${c.type}" min="${today()}"` : ''}${c.mode ? ` inputmode="${c.mode}"` : ''}` +
+        `${ph ? ` placeholder="${esc(ph)}"` : ''} autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other"></td>`;
     }).join('') + `<td class="c-x"><button type="button" data-del="${r.id}" aria-label="Remove row ${i + 1}">×</button></td>`;
     frag.appendChild(tr);
   });
@@ -150,6 +189,7 @@ function ingest(file) {
         r.candidates = m.candidates;
         r.qty = r.qty || '1';
         if (r.state) r.state = normaliseState(r.state);   // "California" → "CA" in the grid too
+        if (r.deliveryDate) r.deliveryDate = isoDate(r.deliveryDate);
         return r;
       }).filter((r) => r.firstName || r.lastName || r.address1);
       if (rows.every((r) => !r.firstName && !r.address1 && !r.sku)) rows = [];
@@ -258,7 +298,7 @@ function buildRecipients() {
     ...g,
     key: 'r' + i,
     giftMessage: g.giftMessage || mergeMessage(template, g),
-    deliveryDate
+    deliveryDate: g.deliveryDate || deliveryDate
   }));
 }
 
@@ -353,12 +393,19 @@ async function price() {
 function renderPrice() {
   const { recipients, quotes, discountPct } = priced;
   const t = { merchandise: 0, discount: 0, shipping: 0, tax: 0, total: 0 };
+  const fmtDate = (d) => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'As soon as possible';
   $('priceRows').innerHTML = recipients.map((r) => {
     const q = quotes[r.key];
     for (const k of Object.keys(t)) t[k] += q.cents[k];
     const gifts = r.lines.map((l) => `${l.qty > 1 ? l.qty + '× ' : ''}${esc((catalog.get(l.sku) || {}).title || l.sku)}`).join('<br>');
-    return `<tr><td>${esc(r.firstName)} ${esc(r.lastName)}${r.company ? `<br><small class="muted">${esc(r.company)}</small>` : ''}</td>
-      <td>${esc(r.city)}, ${esc(r.state)}</td><td>${gifts}</td>
+    const addr = [r.address1, r.address2].filter(Boolean).map(esc).join(', ') + `<br>${esc(r.city)}, ${esc(r.state)} ${esc(r.zip)}`;
+    const contact = [r.phone, r.email].filter(Boolean).map(esc).join('<br>');
+    return `<tr>
+      <td><b>${esc(r.firstName)} ${esc(r.lastName)}</b>${r.company ? `<br><small class="muted">${esc(r.company)}</small>` : ''}</td>
+      <td>${addr}${contact ? `<br><small class="muted">${contact}</small>` : ''}</td>
+      <td>${gifts}</td>
+      <td class="msg">${r.giftMessage ? `“${esc(r.giftMessage)}”` : '<span class="muted">No message</span>'}</td>
+      <td>${esc(fmtDate(r.deliveryDate))}</td>
       <td>${esc(q.shippingTitle)}<br><small class="mono">${usd(q.cents.shipping)}</small></td>
       <td class="num">${usd(q.cents.tax)}</td><td class="num"><b>${usd(q.cents.total)}</b></td></tr>`;
   }).join('');
@@ -454,6 +501,10 @@ function wire() {
     if (e.target.dataset.k === 'sku') { r.match = 'ok'; renderMatches(); }
     if (e.target.dataset.k === 'state' && e.target.value.length > 2) r.state = normaliseState(e.target.value);
     e.target.closest('td').classList.remove('bad', 'warn');
+    if (['firstName', 'lastName', 'company'].includes(e.target.dataset.k)) {
+      const msg = tr.querySelector('input[data-k="giftMessage"]');
+      if (msg) msg.placeholder = previewFor(r);
+    }
     invalidate(); updateCount();
   });
   $('rows').addEventListener('focusout', (e) => {
@@ -467,6 +518,7 @@ function wire() {
   });
   $('message').addEventListener('input', () => {
     invalidate();
+    refreshPreviews();
     const first = rows.find((r) => r.firstName);
     $('msgPreview').textContent = first && $('message').value ? `Preview: “${mergeMessage($('message').value, first)}”` : '';
   });

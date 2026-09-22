@@ -92,6 +92,7 @@ export function groupRows(rows) {
     const g = map.get(key);
     g.rows.push(row.rowNumber);
     if (!g.giftMessage && r.giftMessage) g.giftMessage = r.giftMessage;
+    if (!g.deliveryDate && r.deliveryDate) g.deliveryDate = r.deliveryDate;
     if (!g.phone && r.phone) g.phone = r.phone;
     if (!g.email && r.email) g.email = r.email;
     const sku = clean(row.sku);

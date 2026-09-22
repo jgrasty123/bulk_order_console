@@ -197,3 +197,18 @@ tr.row-err td.c-n { color: var(--bad); font-weight: 600; }
   .match__list li { grid-template-columns: 1fr; }
   .match__arrow { display: none; }
 }
+
+/* --- Wider sheet: pinned names, message + date columns --------------------------- */
+.sheet__table td.c-n, .sheet__table th.c-n { position: sticky; left: 0; z-index: 2; background: #fff; width: 2.6rem; min-width: 2.6rem; }
+.sheet__table .c-first { position: sticky; left: 2.6rem; z-index: 2; background: #fff; }
+.sheet__table .c-last  { position: sticky; left: calc(2.6rem + 8rem); z-index: 2; background: #fff; box-shadow: 1px 0 0 var(--rule-2); }
+.sheet__table th.c-n, .sheet__table th.c-first, .sheet__table th.c-last { background: var(--paper); z-index: 3; }
+.sheet__table .c-first input, .sheet__table .c-last input { min-width: 8rem; width: 8rem; }
+.sheet__table tr.row-err td.c-first, .sheet__table tr.row-err td.c-last { background: #fff; }
+.sheet__table .c-msg input { min-width: 18rem; }
+.sheet__table .c-msg input::placeholder { color: #a8a7a0; font-style: italic; }
+.sheet__table .c-date input { min-width: 9.5rem; }
+.sheet__table .c-addr input { min-width: 11rem; }
+.sheet__table .c-email input { min-width: 12rem; }
+.sheet__table--read td.msg { max-width: 22rem; font-style: italic; color: var(--ink-2); }
+.sheet__table--read td { font-size: 0.82rem; }

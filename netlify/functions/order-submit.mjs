@@ -59,7 +59,7 @@ export default async (req) => {
       firstName: clean(raw.firstName), lastName: clean(raw.lastName), company: clean(raw.company),
       address1: clean(raw.address1), address2: clean(raw.address2), city: clean(raw.city),
       state: normaliseState(raw.state), zip: clean(raw.zip), phone: clean(raw.phone), email: clean(raw.email),
-      giftMessage: clean(raw.giftMessage), deliveryDate: deliveryDate || '',
+      giftMessage: clean(raw.giftMessage), deliveryDate: clean(raw.deliveryDate) || deliveryDate || '',
       lines: (raw.lines || []).map((l) => ({ sku: clean(l.sku), qty: Number(l.qty) })),
       quote: raw.quote
     };
