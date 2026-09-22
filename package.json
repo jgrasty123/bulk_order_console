@@ -7,7 +7,8 @@
     "@netlify/blobs": "^11.1.0"
   },
   "scripts": {
-    "test": "esbuild netlify/functions/*.mjs --bundle --platform=node --format=esm --target=node20 --outdir=tests/.build --log-level=warning && node tests/e2e.mjs && node tests/giftmatch.mjs"
+    "test": "node tools/stamp-assets.mjs && esbuild netlify/functions/*.mjs --bundle --platform=node --format=esm --target=node20 --outdir=tests/.build --log-level=warning && node tests/e2e.mjs && node tests/giftmatch.mjs",
+    "stamp": "node tools/stamp-assets.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.23.0"
