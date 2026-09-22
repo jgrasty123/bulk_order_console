@@ -212,3 +212,8 @@ tr.row-err td.c-n { color: var(--bad); font-weight: 600; }
 .sheet__table .c-email input { min-width: 12rem; }
 .sheet__table--read td.msg { max-width: 22rem; font-style: italic; color: var(--ink-2); }
 .sheet__table--read td { font-size: 0.82rem; }
+
+.field--code { max-width: 26rem; margin-top: 1.5rem; }
+.field--code input { text-transform: uppercase; }
+#codeNote.good { color: var(--ok); font-weight: 600; }
+#codeNote.bad { color: var(--bad); }

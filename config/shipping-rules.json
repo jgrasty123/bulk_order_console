@@ -36,7 +36,13 @@
     "preferredRates": [
       "Ground"
     ],
-    "_ratesNote": "Customers are charged the live carrier rate for each address. preferredRates picks the service by title match, in order; if none match, the cheapest available rate is used."
+    "_ratesNote": "Customers are charged the live carrier rate for each address. preferredRates picks the service by title match, in order; if none match, the cheapest available rate is used.",
+    "discountCodes": {
+      "enabled": true,
+      "combine": "best",
+      "_combineOptions": "best = the bigger of the code and the volume discount (never both) | stack = both, applied one after the other | code-only = a code replaces the volume discount",
+      "_note": "Codes are taken on the order page, before pricing, so each destination's tax is calculated on the discounted price. Percentage codes only; a fixed-amount code can't be split across recipients correctly and is refused with a message to contact us."
+    }
   },
   "orderDefaults": {
     "requireAdultSignature": true,
