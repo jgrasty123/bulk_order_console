@@ -88,7 +88,7 @@ function pickRate(rates) {
  *   flatShipping: number (dollars) → that flat rate; null → live carrier rate.
  * draftOrderCalculate saves nothing, so both calls are safe to retry.
  */
-export async function quoteRecipient(r, { discountPct = 0, flatShipping = null }) {
+export async function quoteRecipient(r, { discountPct = 0, flatShipping = null, discountTitle = 'Corporate volume discount' }) {
   const currencyCode = rules.pricing.currencyCode;
   const input = {
     lineItems: r.lines.map((l) => ({ variantId: l.variantId, quantity: Number(l.qty) })),
@@ -99,7 +99,7 @@ export async function quoteRecipient(r, { discountPct = 0, flatShipping = null }
     }
   };
   if (discountPct > 0) {
-    input.appliedDiscount = { title: 'Corporate volume discount', value: discountPct, valueType: 'PERCENTAGE' };
+    input.appliedDiscount = { title: discountTitle, value: discountPct, valueType: 'PERCENTAGE' };
   }
 
   let shippingTitle = rules.pricing.shippingTitle;
@@ -140,6 +140,64 @@ export async function quoteRecipient(r, { discountPct = 0, flatShipping = null }
   };
 }
 
+/* --- Discount codes -------------------------------------------------------------
+   We can't read the store's discounts with this token, and an invalid code is
+   silently ignored by Shopify rather than rejected. So we ask Shopify what the
+   code does to a real basket, twice — once as ordered and once at double the
+   quantity:
+
+     discount doubles  → percentage code, and we know the percentage
+     discount unchanged → fixed-amount code
+     no discount        → the code doesn't apply to this order
+
+   Percentage codes are then applied per recipient like the volume discount, so
+   each destination's tax is calculated on the discounted price and the invoice
+   total matches to the cent.
+   -------------------------------------------------------------------------------- */
+
+export async function probeCode(code, sample) {
+  const base = {
+    shippingAddress: {
+      firstName: sample.firstName, lastName: sample.lastName,
+      address1: sample.address1, address2: sample.address2 || null,
+      city: sample.city, provinceCode: sample.state, zip: sample.zip, countryCode: 'US'
+    },
+    discountCodes: [code]
+  };
+  const once = { ...base, lineItems: sample.lines.map((l) => ({ variantId: l.variantId, quantity: Number(l.qty) })) };
+  const twice = { ...base, lineItems: sample.lines.map((l) => ({ variantId: l.variantId, quantity: Number(l.qty) * 2 })) };
+
+  const [a, b] = await Promise.all([
+    gql(CALC, { input: once }, { safeToRetry: true }),
+    gql(CALC, { input: twice }, { safeToRetry: true })
+  ]);
+  const A = a.draftOrderCalculate.calculatedDraftOrder;
+  const B = b.draftOrderCalculate.calculatedDraftOrder;
+  if (!A || !B) return { kind: 'invalid' };
+
+  const dA = money(A.totalDiscountsSet), dB = money(B.totalDiscountsSet), gA = money(A.totalLineItemsPriceSet);
+  if (dA <= 0) return { kind: 'invalid' };
+  if (Math.abs(dB - dA * 2) <= 2) {
+    const percent = Math.round((dA / gA) * 10000) / 100;
+    return percent > 0 && percent <= 100 ? { kind: 'percentage', percent } : { kind: 'invalid' };
+  }
+  if (Math.abs(dB - dA) <= 2) return { kind: 'fixed', amountCents: dA };
+  return { kind: 'unsupported' };
+}
+
+/* Which discount actually applies, given the store's rule. */
+export function effectiveDiscount(volumePct, codePct, combine) {
+  if (!codePct) return { pct: volumePct, source: 'volume' };
+  if (!volumePct) return { pct: codePct, source: 'code' };
+  if (combine === 'stack') {
+    // Applied one after the other, not added, so it can never exceed 100%.
+    const pct = Math.round((100 - (100 - volumePct) * (100 - codePct) / 100) * 100) / 100;
+    return { pct, source: 'both' };
+  }
+  if (combine === 'code-only') return { pct: codePct, source: 'code' };
+  return codePct >= volumePct ? { pct: codePct, source: 'code' } : { pct: volumePct, source: 'volume' };
+}
+
 /* --- Signing ------------------------------------------------------------------ */
 
 const QUOTE_MAX_AGE_MS = 3 * 60 * 60 * 1000;
@@ -157,7 +215,7 @@ function quoteBasis(r, q) {
   return JSON.stringify([
     r.firstName, r.lastName, r.address1, r.address2 || '', r.city, r.state, r.zip,
     [...r.lines].map((l) => `${l.sku}x${Number(l.qty)}`).sort(),
-    q.discountPct, q.shippingTitle,
+    q.discountPct, q.shippingTitle, q.discountCode || '',
     q.cents.gross, q.cents.discount, q.cents.merchandise, q.cents.shipping, q.cents.tax, q.cents.total,
     q.signedAt
   ].map((v) => (typeof v === 'string' ? v.toLowerCase().trim() : v)));

@@ -159,17 +159,19 @@ export async function createBatchWithInvoice(batch) {
       (batch.pricing.discountPct ? ` ${batch.pricing.discountPct}% volume discount applied per recipient.` : '') +
       ` Child orders are created at $0 after payment and carry tag ${tagPrefix}${batch.id}.` +
       (batch.buyer.dob ? ` Buyer DOB given: ${batch.buyer.dob}.` : ''),
-    tags: [...rules.orderDefaults.parentOrderTags, `${tagPrefix}${batch.id}`, `bulk-source-${batch.source}`],
+    tags: [...rules.orderDefaults.parentOrderTags, `${tagPrefix}${batch.id}`, `bulk-source-${batch.source}`,
+      ...(batch.pricing.discountCode ? [`code-${batch.pricing.discountCode}`] : [])],
     taxExempt: true,
     customAttributes: [
       { key: 'Bulk Batch', value: batch.id },
-      { key: 'Recipients', value: String(n) }
+      { key: 'Recipients', value: String(n) },
+      ...(batch.pricing.discountCode ? [{ key: 'Discount Code', value: batch.pricing.discountCode }] : [])
     ],
     lineItems
   };
   if (discount > 0) {
     input.appliedDiscount = {
-      title: `Corporate volume discount${batch.pricing.discountPct ? ` (${batch.pricing.discountPct}%)` : ''}`,
+      title: `${batch.pricing.discountTitle || 'Corporate volume discount'}${batch.pricing.discountPct ? ` (${batch.pricing.discountPct}%)` : ''}`,
       description: 'Applied per recipient',
       value: Number(fromCents(discount)),
       valueType: 'FIXED_AMOUNT'

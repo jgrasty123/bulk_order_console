@@ -64,7 +64,14 @@ function handle(query, vars) {
     }
     const gross = i.lineItems.reduce((n, l) => n + cents(byId[l.variantId].price) * l.quantity, 0);
     const pct = i.appliedDiscount ? i.appliedDiscount.value : 0;
-    const discount = Math.round(gross * pct / 100);
+    let discount = Math.round(gross * pct / 100);
+    // Store discount codes, matched case-insensitively as Shopify does:
+    // SAVE15 = 15% off, FIFTY = $50 off, anything else silently ignored.
+    for (const raw of i.discountCodes || []) {
+      const c = String(raw).toUpperCase();
+      if (c === 'SAVE15') discount += Math.round(gross * 0.15);
+      else if (c === 'FIFTY') discount += 5000;
+    }
     const units = i.lineItems.reduce((n, l) => n + l.quantity, 0);
     const RATES = [
       { handle: 'h-ground-' + i.shippingAddress.provinceCode + '-' + units, title: 'UPS® Ground', price: { amount: amt(1500 + 400 * units) } },
@@ -335,6 +342,22 @@ ok(/isn’t available/.test(fake.data.quotes.k4.error), 'only catalog products c
 const big = await pub('order-quote', { body: { recipients: [person(5)], batchSize: 25 } });
 ok(big.data.discountPct === 10 && big.data.quotes.k5.cents.discount === Math.round(24995 * 0.10), '20+ recipients: 10% off');
 
+console.log('\nPublic: discount codes');
+const withCode = async (code, size = 2) => (await pub('order-quote', { body: { recipients: [person(7)], batchSize: size, discountCode: code } })).data;
+const good = await withCode('save15');
+ok(good.code.valid && good.code.percent === 15 && good.discountPct === 15, 'percentage code recognised and applied (15%)');
+ok(good.quotes.k7.cents.discount === Math.round(24995 * 0.15), 'code discount priced per recipient, so tax follows the discounted price');
+ok(good.quotes.k7.sig && good.quotes.k7.discountCode === 'SAVE15', 'coded quote is signed and carries the code');
+const fixed = await withCode('FIFTY');
+ok(!fixed.code.valid && /fixed amount/.test(fixed.code.message) && fixed.discountPct === 0, 'fixed-amount code refused with a clear message, not silently applied');
+const nope = await withCode('MADE-UP-CODE');
+ok(!nope.code.valid && /isn’t valid/.test(nope.code.message), 'invalid code reported rather than ignored');
+const beats = await withCode('SAVE15', 25);
+ok(beats.discountPct === 15 && beats.discountSource === 'code', 'code beats the 10% volume discount — the better one wins, never both');
+const loses = await withCode('SAVE15', 25);
+ok(loses.volumePct === 10 && loses.discountPct === 15, 'volume discount still reported alongside');
+
+
 console.log('\nPublic: submit');
 const withQ = small.map(r => ({ ...r, quote: pq.data.quotes[r.key] }));
 const buyerP = { name: 'Jo Buyer', company: 'Acme', email: 'jo@acme.test', dob: '1980-05-01' };
@@ -346,6 +369,10 @@ const moved = JSON.parse(JSON.stringify(withQ)); moved[1].state = 'CA'; moved[1]
 ok((await pub('order-submit', { body: { buyer: buyerP, recipients: moved } })).data.error === 'bad_quote', 'changing an address after pricing is rejected');
 const cheat = [person(5)].map(r => ({ ...r, quote: big.data.quotes.k5 })).concat([{ ...person(6), quote: big.data.quotes.k5 }]);
 ok((await pub('order-submit', { body: { buyer: buyerP, recipients: cheat } })).data.error === 'bad_quote', 'a 20+ discount cannot be used on a smaller order');
+console.log('\nCode cannot be faked in the browser');
+const faked = JSON.parse(JSON.stringify([{ ...person(1), quote: pq.data.quotes.k1 }, { ...person(2, 'TX', '73301'), quote: pq.data.quotes.k2 }]));
+faked[0].quote.discountCode = 'SAVE15'; faked[0].quote.discountPct = 15;
+ok((await pub('order-submit', { body: { buyer: buyerP, recipients: faked } })).data.error === 'bad_quote', 'a code pasted into a quote by hand is rejected');
 
 const draftsBefore = Object.keys(S.drafts).length;
 const sub = await pub('order-submit', { body: { buyer: buyerP, recipients: withQ, deliveryDate: '2099-12-01' } });

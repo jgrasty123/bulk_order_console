@@ -48,7 +48,13 @@ export default async (req) => {
   }
   if (deliveryDate && !/^\d{4}-\d{2}-\d{2}$/.test(deliveryDate)) return bad('Delivery date is not valid.');
 
-  const expectedDiscount = discountFor(recipients.length, rules);
+  const volumePct = discountFor(recipients.length, rules);
+  // Each quote carries the discount the server itself decided and signed, so a
+  // code can't be invented in the browser. Without a code, it must still be
+  // exactly the volume discount for this many recipients.
+  const first = recipients[0] && recipients[0].quote;
+  const expectedDiscount = first && first.discountCode ? first.discountPct : volumePct;
+  const expectedCode = (first && first.discountCode) || '';
   let catalog;
   try { catalog = new Map((await loadCatalog()).map((i) => [i.sku, i])); }
   catch (err) { return fail(err); }
@@ -76,8 +82,11 @@ export default async (req) => {
     const problem = verifyQuote(r, r.quote);
     if (problem === 'expired') return bad('Your prices are more than 3 hours old. Please re-check your order to refresh them.', 'stale_quote');
     if (problem) return bad(`${who}: the price for this recipient doesn’t match. Please re-check your order.`, 'bad_quote');
-    if (r.quote.discountPct !== expectedDiscount) {
-      return bad('The number of recipients changed since pricing. Please re-check your order.', 'bad_quote');
+    if (r.quote.discountPct !== expectedDiscount || (r.quote.discountCode || '') !== expectedCode) {
+      return bad('Your pricing changed since it was quoted. Please re-check your order.', 'bad_quote');
+    }
+    if (expectedCode && r.quote.discountPct < volumePct) {
+      return bad('Please re-check your order to refresh your pricing.', 'bad_quote');
     }
     clean_.push(r);
   }
@@ -85,7 +94,7 @@ export default async (req) => {
   try {
     const batch = buildBatch({
       id: newBatchId(), source: 'customer', buyer: b,
-      pricing: { discountPct: expectedDiscount, shipping: 'live' },
+      pricing: { discountPct: expectedDiscount, shipping: 'live', discountCode: expectedCode, discountTitle: (first && first.discountTitle) || '' },
       recipients: clean_
     });
     await createBatchWithInvoice(batch);

@@ -358,12 +358,13 @@ async function price() {
       $('progressLabel').textContent = `Pricing ${done} of ${recipients.length} addresses…`;
       const res = await fetch('/.netlify/functions/order-quote', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recipients: part, batchSize: recipients.length })
+        body: JSON.stringify({ recipients: part, batchSize: recipients.length, discountCode: $('discountCode').value.trim() })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Pricing failed.');
       Object.assign(quotes, data.quotes);
       discountPct = data.discountPct;
+      showCode(data);
       done += part.length;
       $('progressBar').style.width = `${Math.round((done / recipients.length) * 100)}%`;
     }
@@ -390,6 +391,24 @@ async function price() {
   $('step3').hidden = false;
 }
 
+/* Tell the customer plainly what their code did. */
+function showCode(data) {
+  const note = $('codeNote');
+  if (!data.code) { note.textContent = ''; note.className = 'muted'; return; }
+  if (!data.code.valid) { note.textContent = data.code.message; note.className = 'bad'; return; }
+  note.className = 'good';
+  note.textContent = data.discountSource === 'code'
+    ? `Code ${data.code.code} applied — ${data.code.percent}% off.`
+    : data.discountSource === 'both'
+      ? `Code ${data.code.code} (${data.code.percent}%) plus your ${data.volumePct}% volume discount — ${data.discountPct}% off.`
+      : `Your ${data.volumePct}% volume discount saves more than code ${data.code.code} (${data.code.percent}%), so we applied the ${data.volumePct}%.`;
+}
+
+const codeLabel = () => {
+  const n = $('codeNote');
+  return n && n.className === 'good' && /applied/.test(n.textContent) ? 'you save (code applied)' : 'you save';
+};
+
 function renderPrice() {
   const { recipients, quotes, discountPct } = priced;
   const t = { merchandise: 0, discount: 0, shipping: 0, tax: 0, total: 0 };
@@ -413,7 +432,7 @@ function renderPrice() {
   $('summary').innerHTML =
     `<div><b>${recipients.length}</b><span>recipients</span></div>` +
     `<div><b>${usd(t.merchandise)}</b><span>gifts${discountPct ? ` after ${discountPct}% off` : ''}</span></div>` +
-    (t.discount ? `<div><b>−${usd(t.discount)}</b><span>you save</span></div>` : '') +
+    (t.discount ? `<div><b>−${usd(t.discount)}</b><span>${esc(codeLabel())}</span></div>` : '') +
     `<div><b>${usd(t.shipping)}</b><span>shipping</span></div>` +
     `<div><b>${usd(t.tax)}</b><span>tax</span></div>` +
     `<div><b>${usd(t.total)}</b><span>total</span></div>`;
@@ -450,7 +469,7 @@ async function submit() {
     const res = await fetch('/.netlify/functions/order-submit', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        buyer, turnstileToken, deliveryDate: $('deliveryDate').value,
+        buyer, turnstileToken, deliveryDate: $('deliveryDate').value, discountCode: $('discountCode').value.trim(),
         recipients: priced.recipients.map((r) => ({ ...r, quote: priced.quotes[r.key] }))
       })
     });
@@ -529,6 +548,7 @@ function wire() {
   }));
   $('deliveryDate').min = new Date().toISOString().slice(0, 10);
   $('deliveryDate').addEventListener('input', invalidate);
+  $('discountCode').addEventListener('input', () => { invalidate(); $('codeNote').textContent = ''; $('codeNote').className = 'muted'; });
   $('priceBtn').addEventListener('click', price);
   wireMatches();
   $('submitBtn').addEventListener('click', submit);

@@ -6,7 +6,7 @@
    ========================================================================== */
 
 import { json, fail, rules } from '../lib/common.mjs';
-import { loadCatalog, quoteRecipient, signQuote } from '../lib/pricing.mjs';
+import { loadCatalog, quoteRecipient, signQuote, probeCode, effectiveDiscount } from '../lib/pricing.mjs';
 import { rateLimited } from '../lib/guard.mjs';
 import { checkRecipient, discountFor, normaliseState, clean } from '../../shared/rules.mjs';
 
@@ -19,7 +19,7 @@ export default async (req) => {
 
   let body;
   try { body = await req.json(); } catch { return json(400, { error: 'bad_json' }); }
-  const { recipients = [], batchSize } = body;
+  const { recipients = [], batchSize, discountCode = '' } = body;
 
   if (!recipients.length || recipients.length > MAX_PER_CALL) {
     return json(400, { error: 'chunk', message: `Send 1 to ${MAX_PER_CALL} recipients per call.` });
@@ -28,13 +28,14 @@ export default async (req) => {
   if (!Number.isInteger(size) || size < recipients.length || size > rules.limits.maxRowsPerBatch) {
     return json(400, { error: 'size', message: `Orders can have up to ${rules.limits.maxRowsPerBatch} recipients.` });
   }
-  const discountPct = discountFor(size, rules);
+  const volumePct = discountFor(size, rules);
 
   let catalog;
   try { catalog = new Map((await loadCatalog()).map((i) => [i.sku, i])); }
   catch (err) { return fail(err); }
 
   const quotes = {};
+  let code = null;
   try {
     for (const raw of recipients) {
       const r = {
@@ -51,11 +52,38 @@ export default async (req) => {
       if (missing) { quotes[r.key] = { error: `“${missing.sku}” isn’t available for corporate orders.` }; continue; }
       r.lines = r.lines.map((l) => ({ ...l, variantId: catalog.get(l.sku).variantId, title: catalog.get(l.sku).title }));
 
-      const q = await quoteRecipient(r, { discountPct, flatShipping: null });
+      if (discountCode && rules.pricing.discountCodes.enabled && !code) {
+        const probe = await probeCode(discountCode.trim(), r);
+        code = {
+          code: discountCode.trim().toUpperCase(),
+          ...probe,
+          message:
+            probe.kind === 'percentage' ? null :
+            probe.kind === 'fixed' ? 'That code is a fixed amount off, which we can’t split across recipients. Please contact us and we’ll apply it to your invoice.' :
+            probe.kind === 'unsupported' ? 'That code can’t be applied to a multi-recipient order. Please contact us.' :
+            'That code isn’t valid for this order.'
+        };
+      }
+      const codePct = code && code.kind === 'percentage' ? code.percent : 0;
+      const { pct, source } = effectiveDiscount(volumePct, codePct, rules.pricing.discountCodes.combine);
+      const title = source === 'code' ? `Discount code ${code.code}`
+        : source === 'both' ? `Corporate volume discount + code ${code.code}`
+        : 'Corporate volume discount';
+
+      const q = await quoteRecipient(r, { discountPct: pct, flatShipping: null, discountTitle: title });
+      if (!q.error) { q.discountCode = source === 'volume' ? '' : code.code; q.discountTitle = title; }
       quotes[r.key] = q.error ? q : signQuote(r, q);
     }
   } catch (err) {
     return fail(err);
   }
-  return json(200, { discountPct, quotes });
+  const codePct = code && code.kind === 'percentage' ? code.percent : 0;
+  const applied = effectiveDiscount(volumePct, codePct, rules.pricing.discountCodes.combine);
+  return json(200, {
+    discountPct: applied.pct,
+    discountSource: applied.source,
+    volumePct,
+    code: code ? { code: code.code, valid: code.kind === 'percentage', percent: code.percent || 0, message: code.message } : null,
+    quotes
+  });
 };
