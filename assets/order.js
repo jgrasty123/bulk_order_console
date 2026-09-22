@@ -63,6 +63,7 @@ async function init() {
   CONFIG = await (await fetch('/config/shipping-rules.json')).json();
   const mail = `mailto:${CONFIG.publicSite.supportEmail}?subject=${encodeURIComponent('Corporate gift order')}`;
   $('helpLink').href = mail; $('footHelp').href = mail;
+  if (CONFIG.publicSite.homeUrl) $('homeLink').href = CONFIG.publicSite.homeUrl;
 
   try {
     const { items } = await (await fetch('/.netlify/functions/order-catalog')).json();
@@ -386,13 +387,27 @@ function toRecipients() {
 
 const plural = (word) => word + (/(x|s|ch|sh)$/i.test(word) ? 'es' : 's');
 
+/* Header nav: jump to either way of starting, from wherever they are. */
+function goChoose() {
+  $('stepChoose').hidden = false;
+  $('entry').hidden = true;
+  $('browse').hidden = false;
+  renderGrid();
+  $('stepChoose').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  $('gridSearch').focus();
+}
+
+function goUpload() {
+  $('stepChoose').hidden = true;
+  $('step1').hidden = false;
+  $('fileInput').click();
+}
+
 function wireBrowse() {
-  $('entryBrowse').addEventListener('click', () => {
-    $('entry').hidden = true; $('browse').hidden = false; renderGrid(); $('gridSearch').focus();
-  });
-  $('entryList').addEventListener('click', () => {
-    $('stepChoose').hidden = true; $('step1').hidden = false; $('fileInput').click();
-  });
+  $('navChoose').addEventListener('click', goChoose);
+  $('navUpload').addEventListener('click', goUpload);
+  $('entryBrowse').addEventListener('click', goChoose);
+  $('entryList').addEventListener('click', goUpload);
 
   const kinds = ['all', ...new Set([...catalog.values()].map((i) => i.kind).filter(Boolean))];
   $('kindChips').innerHTML = kinds.map((k) =>

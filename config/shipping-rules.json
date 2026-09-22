@@ -78,6 +78,8 @@
     "brandName": "The BroBasket",
     "supportEmail": "james@thebevconnect.com",
     "turnstileSiteKey": "",
-    "_turnstileNote": "Optional Cloudflare Turnstile bot check on submit. Set the site key here and TURNSTILE_SECRET_KEY in Netlify to turn it on."
+    "_turnstileNote": "Optional Cloudflare Turnstile bot check on submit. Set the site key here and TURNSTILE_SECRET_KEY in Netlify to turn it on.",
+    "homeUrl": "https://www.thebrobasket.com",
+    "_homeNote": "Where the Home link in the portal header goes — the main storefront."
   }
 }

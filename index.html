@@ -17,7 +17,12 @@
 
 <header class="bar">
   <a class="brand" href="/"><img class="brand__logo" src="/assets/brobasket-logo.png" alt="The BroBasket" width="44" height="44"><span class="brand__name">The BroBasket</span><span class="brand__sub">Corporate gifting</span></a>
-  <a class="bar__help" id="helpLink" href="#">Questions?</a>
+  <nav class="nav" aria-label="Main">
+    <a class="nav__link" id="homeLink" href="#">Home</a>
+    <button type="button" class="nav__link" id="navChoose">Choose Your Gifts</button>
+    <button type="button" class="nav__link" id="navUpload">Upload My Gift List</button>
+    <a class="nav__link nav__link--quiet" id="helpLink" href="#">Questions?</a>
+  </nav>
 </header>
 
 <section class="hero">
@@ -45,9 +50,9 @@
 
     <div class="entry" id="entry">
       <button type="button" class="entry__card" id="entryBrowse">
-        <b>Help me pick gifts</b><span>Browse all 200+ corporate gifts</span></button>
+        <b>Choose Your Gifts</b><span>Browse all 200+ corporate gifts, with photos and prices</span></button>
       <button type="button" class="entry__card" id="entryList">
-        <b>I already have my list</b><span>Upload a spreadsheet with gifts and addresses</span></button>
+        <b>Upload My Gift List</b><span>Bring a spreadsheet of recipients, gifts and addresses</span></button>
     </div>
 
     <div id="browse" hidden>
