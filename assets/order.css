@@ -312,3 +312,16 @@ td.c-gift input.gift-pick:placeholder-shown { color: var(--ink-3); }
   .nav { width: 100%; justify-content: flex-start; border-top: 1px solid var(--rule); padding-top: 0.35rem; }
   .nav__link { padding: 0.4rem 0.5rem; font-size: 0.8rem; }
 }
+
+/* --- Contact ------------------------------------------------------------------------ */
+.contact__row { display: flex; align-items: center; gap: 0.6rem; margin: 0.75rem 0 0; }
+.contact__value { font: 600 1rem var(--body); color: var(--ink); text-decoration: none; border-bottom: 2px solid var(--amber); }
+.contact__value:hover { color: var(--amber); }
+.linky { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-decoration: underline; cursor: pointer; }
+/* the modal styles live with the staff console; repeat the essentials here */
+dialog.modal { border: 1px solid var(--ink); background: var(--card); color: var(--ink);
+  padding: 1.75rem; width: min(28rem, calc(100vw - 2rem)); }
+dialog.modal::backdrop { background: rgba(17,17,16,.55); }
+dialog.modal h2 { font: 700 1.2rem var(--display); margin: 0.2rem 0 0.4rem; }
+.modal__actions { display: flex; justify-content: flex-end; margin-top: 1.25rem; }
+.eyebrow { font: 600 0.7rem var(--body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); margin: 0; }

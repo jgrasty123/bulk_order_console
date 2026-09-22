@@ -57,12 +57,39 @@ const HEADERS = {
 let CONFIG, catalog = new Map(), giftIndex = [], rows = [], seq = 1;
 let priced = null;         // { recipients, quotes, discountPct }
 
+
+/* Questions? — a mailto alone is unreliable (a browser with no mail app
+   does nothing at all on click), so show the address with a copy button. */
+function wireContact(cfg) {
+  const email = cfg.publicSite.supportEmail;
+  const phone = cfg.publicSite.supportPhone;
+  const subject = encodeURIComponent('Corporate gift order');
+  document.getElementById('contactMail').textContent = email;
+  document.getElementById('contactMail').href = `mailto:${email}?subject=${subject}`;
+  if (phone) {
+    document.getElementById('contactPhoneRow').hidden = false;
+    document.getElementById('contactPhone').textContent = phone;
+    document.getElementById('contactPhone').href = `tel:${phone.replace(/[^\d+]/g, '')}`;
+  }
+  const open = (e) => { e.preventDefault(); document.getElementById('contact').showModal(); };
+  ['helpLink', 'footHelp'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', open);
+  });
+  document.getElementById('contactClose').addEventListener('click', () => document.getElementById('contact').close());
+  document.getElementById('copyMail').addEventListener('click', async () => {
+    const btn = document.getElementById('copyMail');
+    try { await navigator.clipboard.writeText(email); btn.textContent = 'Copied'; }
+    catch { btn.textContent = 'Select and copy'; }
+    setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+  });
+}
+
 /* --- Setup ------------------------------------------------------------------ */
 
 async function init() {
   CONFIG = await (await fetch('/config/shipping-rules.json')).json();
-  const mail = `mailto:${CONFIG.publicSite.supportEmail}?subject=${encodeURIComponent('Corporate gift order')}`;
-  $('helpLink').href = mail; $('footHelp').href = mail;
+  wireContact(CONFIG);
   if (CONFIG.publicSite.homeUrl) $('homeLink').href = CONFIG.publicSite.homeUrl;
 
   try {
