@@ -503,6 +503,29 @@ function loadTurnstile(siteKey) {
   document.head.appendChild(s);
 }
 
+/* Clear everything and begin a new order. Asks first when there is
+   something to lose. */
+function startOver({ ask = true } = {}) {
+  const hasWork = rows.some((r) => r.firstName || r.lastName || r.address1 || r.sku);
+  if (ask && hasWork && !confirm('Clear this order and start over? Everything you have entered will be removed.')) return;
+
+  rows = []; seq = 1; priced = null;
+  addRow(); addRow();
+  ['message', 'deliveryDate', 'discountCode', 'bName', 'bCompany', 'bEmail', 'bPhone', 'bPo', 'bDob']
+    .forEach((id) => { if ($(id)) $(id).value = ''; });
+  $('codeNote').textContent = ''; $('codeNote').className = 'muted';
+  $('msgPreview').textContent = '';
+  $('submitError').hidden = true;
+  $('submitBtn').disabled = false;
+  $('submitBtn').textContent = 'Continue to secure checkout';
+  showIssues([]);
+  invalidate();
+  renderRows();
+  renderMatches();
+  $('step1').hidden = false;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
 /* --- Wiring -------------------------------------------------------------------------- */
 
 function wire() {
@@ -550,6 +573,8 @@ function wire() {
   $('deliveryDate').addEventListener('input', invalidate);
   $('discountCode').addEventListener('input', () => { invalidate(); $('codeNote').textContent = ''; $('codeNote').className = 'muted'; });
   $('priceBtn').addEventListener('click', price);
+  $('startOver').addEventListener('click', () => startOver());
+  $('newOrder').addEventListener('click', () => startOver({ ask: false }));
   wireMatches();
   $('submitBtn').addEventListener('click', submit);
   renderRows();
