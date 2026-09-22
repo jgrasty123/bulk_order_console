@@ -244,3 +244,5 @@ tr.row-err td.c-n { color: var(--bad); font-weight: 600; }
 input.gift-pick { background-image: none; }
 td.c-gift input.gift-pick:placeholder-shown { color: var(--ink-3); }
 .apply-all input.gift-pick { width: 15rem; }
+
+.gift-menu .kind { display: block; font-size: 0.72rem; color: var(--ink-3); }

@@ -123,7 +123,8 @@ function openMenu(input) {
     ? hits.map((h, n) => {
         const i = catalog.get(h.sku);
         return `<li role="option" data-sku="${esc(h.sku)}" aria-selected="false" id="gift-opt-${n}">` +
-          `<span>${esc(i.title)}${i.available ? '' : ' <span class="sold">(sold out)</span>'}</span>` +
+          `<span>${esc(i.title)}${i.available ? '' : ' <span class="sold">(sold out)</span>'}` +
+          `${i.kind ? `<small class="kind">${esc(i.kind)}</small>` : ''}</span>` +
           `<span class="price">$${esc(i.price)}</span></li>`;
       }).join('')
     : '<li class="empty">No gifts match that. Try fewer words.</li>';
@@ -414,8 +415,8 @@ function wireMatches() {
     invalidate(); renderRows(); renderMatches();
   });
   $('giftList').addEventListener('click', () => {
-    const csv = Papa.unparse({ fields: ['gift', 'price', 'sku'],
-      data: [...catalog.values()].filter((i) => i.available).map((i) => [i.title, i.price, i.sku]) });
+    const csv = Papa.unparse({ fields: ['gift', 'type', 'price', 'sku'],
+      data: [...catalog.values()].filter((i) => i.available).map((i) => [i.title, i.kind || '', i.price, i.sku]) });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     a.download = 'brobasket-corporate-gift-list.csv'; a.click();
