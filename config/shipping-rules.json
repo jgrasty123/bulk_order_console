@@ -66,17 +66,13 @@
     "_sourceNote": "Shown on orders as the source. Shopify also labels orders with the app that created them — rename the app itself in Settings → Apps → Develop apps to change that."
   },
   "catalog": {
-    "variantQuery": "product_status:active AND (product_type:'Gift Basket' OR product_type:'BroBox' OR product_type:'Gift Set' OR product_type:'Engraveable')",
-    "_note": "What corporate customers can order. Product types, so a new gift is offered as soon as it is active — no SKU pattern to maintain. Add or remove a product_type here to change the range (CMYO Bundle is deliberately left out: those are build-your-own components, not finished gifts).",
-    "excludeSkus": [
-      "926631",
-      "926638"
-    ],
+    "variantQuery": "product_status:active AND (product_type:'Gift Basket' OR product_type:'BroBox' OR product_type:'Gift Set')",
+    "_note": "What corporate customers can order. Product types, so a new gift is offered as soon as it is active — no SKU pattern to maintain. Add or remove a product_type here to change the range. Left out on purpose: Engraveable (personalisation, not a standalone corporate gift) and CMYO Bundle (build-your-own components).",
+    "excludeSkus": [],
     "excludeTitlePatterns": [
-      "^Engrave Your ",
       "^Gift Card"
     ],
-    "_excludeNote": "Add-on services and non-gifts. Case-insensitive regular expressions on the product title — keep them anchored and specific: a loose word like 'Sample' would knock out every Sampler gift basket."
+    "_excludeNote": "Non-gifts. Case-insensitive regular expressions on the product title — keep them anchored and specific: a loose word like 'Sample' would knock out every Sampler gift basket."
   },
   "publicSite": {
     "brandName": "The BroBasket",
