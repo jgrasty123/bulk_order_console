@@ -19,7 +19,12 @@ const CATALOG = `
     productVariants(first: 250, query: $q, after: $after) {
       edges { node {
         id sku title price availableForSale
-        product { id title status handle featuredMedia { preview { image { url } } } }
+        product {
+          id title status handle tags
+          featuredMedia { preview { image { url altText } } }
+          engraving: metafield(namespace: "custom", key: "engraving") { value }
+          optionSet: metafield(namespace: "custom", key: "option_set_v2") { value }
+        }
       } }
       pageInfo { hasNextPage endCursor }
     }
@@ -50,6 +55,11 @@ export async function loadCatalog({ fresh = false } = {}) {
         price: node.price,
         available: node.availableForSale,
         kind: node.product.productType || '',
+        alcohol: node.product.tags.includes('contains_alcohol'),
+        cigars: node.product.tags.includes('contains_cigars'),
+        // What upgrades this gift supports on the storefront, for a later step.
+        engraving: Boolean(node.product.engraving && node.product.engraving.value === 'true'),
+        optionSet: node.product.optionSet ? node.product.optionSet.value : '',
         image: (node.product.featuredMedia && node.product.featuredMedia.preview &&
                 node.product.featuredMedia.preview.image && node.product.featuredMedia.preview.image.url) || null
       });

@@ -49,6 +49,9 @@ function handle(query, vars) {
     return { productVariants: { edges: Object.entries(V).map(([sku, v]) => ({ node: {
       id: v.id, sku, title: 'Default Title', price: v.price, availableForSale: true,
       product: { id: 'gid://shopify/Product/' + sku, title: v.title, status: v.status, handle: sku.toLowerCase(),
+        tags: sku === 'BSKT-032' ? [] : ['contains_alcohol'],
+        engraving: { value: sku === 'BSKT-016' ? 'true' : 'false' },
+        optionSet: { value: '["Alcohol Signature","Card"]' },
         featuredMedia: { preview: { image: { url: 'https://cdn.test/' + sku + '.jpg' } } } } } })),
       pageInfo: { hasNextPage: false, endCursor: null } } };
   }
@@ -336,6 +339,9 @@ const pub = async (name, { method = 'POST', body, qs = '', headers = {} } = {}) 
 const cat = await pub('order-catalog', { method: 'GET' });
 ok(cat.status === 200 && cat.data.items.length === Object.keys(V).length, 'catalog lists the corporate products, no key needed');
 ok(!('variantId' in cat.data.items[0]), 'catalog does not expose internal variant ids');
+ok(cat.data.items.every((i) => 'image' in i && 'kind' in i), 'catalog carries a photo and product type for the browse grid');
+ok(cat.data.items.filter((i) => !i.alcohol).length === 1, 'alcohol-free gifts are flagged for the filter');
+ok(cat.data.items.some((i) => i.engraving), 'engravable gifts are flagged, for the upgrades step');
 
 const person = (i, state = 'CA', zip = '90001') => ({
   key: 'k' + i, firstName: 'Pat' + i, lastName: 'Lee', company: 'Acme', address1: `${100 + i} Main St`, address2: '',

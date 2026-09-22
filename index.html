@@ -34,10 +34,52 @@
 
 <main class="page">
 
-  <!-- 1 · Recipients -->
-  <section class="step" id="step1">
+
+  <!-- 1 · Choose gifts -->
+  <section class="step" id="stepChoose">
     <header class="step__head">
       <span class="step__num">1</span>
+      <div><h2>Choose your gifts</h2>
+        <p class="muted">Pick one gift for everyone, or several to share out. You’ll say who gets what next.</p></div>
+    </header>
+
+    <div class="entry" id="entry">
+      <button type="button" class="entry__card" id="entryBrowse">
+        <b>Help me pick gifts</b><span>Browse all 200+ corporate gifts</span></button>
+      <button type="button" class="entry__card" id="entryList">
+        <b>I already have my list</b><span>Upload a spreadsheet with gifts and addresses</span></button>
+    </div>
+
+    <div id="browse" hidden>
+      <div class="browse__bar">
+        <input id="gridSearch" type="search" placeholder="Search gifts — “whiskey”, “bbq”, “champagne”…" autocomplete="off">
+        <span class="chips" id="kindChips"></span>
+        <select id="priceBand" aria-label="Price">
+          <option value="">Any price</option>
+          <option value="0-75">Under $75</option>
+          <option value="75-125">$75–$125</option>
+          <option value="125-200">$125–$200</option>
+          <option value="200-99999">$200+</option>
+        </select>
+        <label class="inline"><input type="checkbox" id="noAlcohol"> Alcohol-free</label>
+        <span class="browse__count" id="gridCount"></span>
+      </div>
+      <div class="grid-gifts" id="giftGrid"></div>
+    </div>
+  </section>
+
+  <div class="tray" id="tray" hidden>
+    <div class="tray__what"><b id="trayCount">0 gifts</b><span id="trayList" class="muted"></span></div>
+    <div class="tray__act">
+      <button class="btn" id="trayClear" type="button">Clear</button>
+      <button class="btn btn--primary" id="trayNext" type="button">Next: who gets them →</button>
+    </div>
+  </div>
+
+  <!-- 2 · Recipients -->
+  <section class="step" id="step1" hidden>
+    <header class="step__head">
+      <span class="step__num">2</span>
       <div><h2>Who’s getting a gift?</h2>
         <p class="muted">One row per gift. Same person twice with different gifts? They’ll get both in one box.</p></div>
     </header>
@@ -107,7 +149,7 @@
   <!-- 2 · Price -->
   <section class="step" id="step2" hidden>
     <header class="step__head">
-      <span class="step__num">2</span>
+      <span class="step__num">3</span>
       <div><h2>Review &amp; price</h2><p class="muted">Check every recipient below — address, gift, message and date. Priced to each address with live UPS Ground rates and tax.</p></div>
     </header>
     <div class="progress" id="progress" hidden><div class="progress__bar" id="progressBar"></div><span id="progressLabel"></span></div>
@@ -124,7 +166,7 @@
   <!-- 3 · Details + pay -->
   <section class="step" id="step3" hidden>
     <header class="step__head">
-      <span class="step__num">3</span>
+      <span class="step__num">4</span>
       <div><h2>Your details</h2><p class="muted">We’ll email your invoice and a link to follow every delivery.</p></div>
     </header>
     <div class="grid3">

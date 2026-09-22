@@ -75,6 +75,7 @@ async function init() {
 
   addRow(); addRow();
   wire();
+  wireBrowse();
   if (CONFIG.publicSite.turnstileSiteKey) loadTurnstile(CONFIG.publicSite.turnstileSiteKey);
 }
 
@@ -308,6 +309,124 @@ function invalidate() {
   $('done').hidden = true;
 }
 
+/* --- 1 · Choose gifts -------------------------------------------------------------
+   Browse with photos, search and filters, and pick quantities. What's chosen
+   becomes the recipient rows in step 2 — so someone sending 12 of one basket
+   gets 12 rows to name, rather than filling in a gift box twelve times.
+   ------------------------------------------------------------------------------------ */
+
+const chosen = new Map();          // sku -> qty
+let kindFilter = 'all';
+
+function gridItems() {
+  const q = $('gridSearch').value.trim();
+  let list = q ? rankGifts(q, giftIndex, 300).map((h) => catalog.get(h.sku)) : [...catalog.values()];
+  if (kindFilter !== 'all') list = list.filter((i) => i.kind === kindFilter);
+  if ($('noAlcohol').checked) list = list.filter((i) => !i.alcohol);
+  const band = $('priceBand').value;
+  if (band) {
+    const [lo, hi] = band.split('-').map(Number);
+    list = list.filter((i) => +i.price >= lo && +i.price < hi);
+  }
+  return list;
+}
+
+const foot = (i, n) => `<span class="gift-card__price">$${esc(i.price)}</span>` + (!i.available
+  ? '<span class="sold-out">Sold out</span>'
+  : n > 0
+    ? `<span class="stepper"><button type="button" data-less="${esc(i.sku)}" aria-label="One fewer">−</button>` +
+      `<span>${n}</span><button type="button" data-more="${esc(i.sku)}" aria-label="One more">+</button></span>`
+    : `<button type="button" class="btn add" data-more="${esc(i.sku)}">Add</button>`);
+
+function renderGrid() {
+  const list = gridItems();
+  $('gridCount').textContent = `${list.length} gift${list.length === 1 ? '' : 's'}`;
+  $('giftGrid').innerHTML = list.length ? list.map((i) => {
+    const n = chosen.get(i.sku) || 0;
+    return `<article class="gift-card" data-sku="${esc(i.sku)}" data-chosen="${n > 0}">
+      <div class="gift-card__img"${i.image ? ` style="background-image:url('${esc(i.image)}')"` : ''} role="img" aria-label="${esc(i.title)}"></div>
+      <div class="gift-card__body">
+        <span class="gift-card__title">${esc(i.title)}</span>
+        <span class="gift-card__meta">${esc(i.kind)}${i.engraving ? ' · engravable' : ''}</span>
+        <div class="gift-card__foot">${foot(i, n)}</div>
+      </div>
+    </article>`;
+  }).join('') : '<p class="muted">No gifts match those filters.</p>';
+  renderTray();
+}
+
+function renderTray() {
+  const gifts = [...chosen.entries()].filter(([, n]) => n > 0);
+  const units = gifts.reduce((n, [, q]) => n + q, 0);
+  $('tray').hidden = !gifts.length;
+  $('trayCount').textContent = `${units} gift${units === 1 ? '' : 's'} chosen`;
+  $('trayList').textContent = gifts.map(([sku, q]) => `${q}× ${(catalog.get(sku) || {}).title || sku}`).join(' · ');
+}
+
+/* Chosen gifts → recipient rows, ready to be named. */
+function toRecipients() {
+  const picked = [...chosen.entries()].filter(([, n]) => n > 0);
+  if (!picked.length) return;
+  rows = rows.filter((r) => r.firstName || r.lastName || r.address1);
+  picked.forEach(([sku, qty]) => {
+    for (let i = 0; i < qty; i++) {
+      const blank = rows.find((r) => !r.sku && !r.firstName && !r.address1);
+      if (blank) { blank.sku = sku; blank.match = 'ok'; } else addRow({ sku, match: 'ok' });
+    }
+  });
+  invalidate();
+  renderRows();
+  $('stepChoose').hidden = true;
+  $('tray').hidden = true;
+  $('step1').hidden = false;
+  $('step1').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const first = $('rows').querySelector('input[data-k="firstName"]');
+  if (first) first.focus();
+}
+
+const plural = (word) => word + (/(x|s|ch|sh)$/i.test(word) ? 'es' : 's');
+
+function wireBrowse() {
+  $('entryBrowse').addEventListener('click', () => {
+    $('entry').hidden = true; $('browse').hidden = false; renderGrid(); $('gridSearch').focus();
+  });
+  $('entryList').addEventListener('click', () => {
+    $('stepChoose').hidden = true; $('step1').hidden = false; $('fileInput').click();
+  });
+
+  const kinds = ['all', ...new Set([...catalog.values()].map((i) => i.kind).filter(Boolean))];
+  $('kindChips').innerHTML = kinds.map((k) =>
+    `<button type="button" class="chip-btn" data-kind="${esc(k)}" aria-pressed="${k === 'all'}">` +
+    `${k === 'all' ? 'All gifts' : esc(plural(k))}</button>`).join('');
+  $('kindChips').addEventListener('click', (e) => {
+    const k = e.target.dataset.kind;
+    if (!k) return;
+    kindFilter = k;
+    [...$('kindChips').children].forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.kind === k)));
+    renderGrid();
+  });
+
+  ['gridSearch', 'priceBand', 'noAlcohol'].forEach((id) => $(id).addEventListener('input', renderGrid));
+
+  $('giftGrid').addEventListener('click', (e) => {
+    const more = e.target.dataset.more, less = e.target.dataset.less;
+    if (!more && !less) return;
+    const sku = more || less;
+    const n = (chosen.get(sku) || 0) + (more ? 1 : -1);
+    if (n > 0) chosen.set(sku, n); else chosen.delete(sku);
+    // Repaint this card only, so a long grid doesn't jump under the cursor.
+    const card = $('giftGrid').querySelector(`.gift-card[data-sku="${CSS.escape(sku)}"]`);
+    if (card) {
+      card.dataset.chosen = n > 0;
+      card.querySelector('.gift-card__foot').innerHTML = foot(catalog.get(sku), n);
+    }
+    renderTray();
+  });
+
+  $('trayClear').addEventListener('click', () => { chosen.clear(); renderGrid(); });
+  $('trayNext').addEventListener('click', toRecipients);
+}
+
 /* --- Spreadsheet --------------------------------------------------------------- */
 
 function ingest(file) {
@@ -338,6 +457,8 @@ function ingest(file) {
       }).filter((r) => r.firstName || r.lastName || r.address1);
       if (rows.every((r) => !r.firstName && !r.address1 && !r.sku)) rows = [];
       incoming.forEach((r) => addRow(r));
+      $('stepChoose').hidden = true;
+      $('step1').hidden = false;
       invalidate();
       renderRows();
       renderMatches();
@@ -666,7 +787,12 @@ function startOver({ ask = true } = {}) {
   invalidate();
   renderRows();
   renderMatches();
-  $('step1').hidden = false;
+  chosen.clear();
+  $('stepChoose').hidden = false;
+  $('entry').hidden = false;
+  $('browse').hidden = true;
+  $('tray').hidden = true;
+  $('step1').hidden = true;
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
