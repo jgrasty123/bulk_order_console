@@ -298,3 +298,17 @@ td.c-gift input.gift-pick:placeholder-shown { color: var(--ink-3); }
 .tray .btn { background: transparent; color: #fff; border-color: #55554f; }
 .tray .btn:hover { border-color: #fff; }
 .tray .btn--primary { background: var(--amber); border-color: var(--amber); }
+
+/* --- Header nav --------------------------------------------------------------------- */
+.nav { display: flex; align-items: center; gap: 0.25rem; flex-wrap: wrap; }
+.nav__link {
+  font: 500 0.85rem var(--body); color: var(--ink); background: none; border: 0;
+  padding: 0.45rem 0.7rem; cursor: pointer; text-decoration: none; border-bottom: 2px solid transparent;
+}
+.nav__link:hover { border-bottom-color: var(--amber); }
+.nav__link--quiet { color: var(--ink-2); }
+@media (max-width: 720px) {
+  .bar { flex-wrap: wrap; gap: 0.35rem; }
+  .nav { width: 100%; justify-content: flex-start; border-top: 1px solid var(--rule); padding-top: 0.35rem; }
+  .nav__link { padding: 0.4rem 0.5rem; font-size: 0.8rem; }
+}

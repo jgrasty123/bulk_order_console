@@ -23,6 +23,7 @@ async function load() {
   try {
     const cfg = await (await fetch('/config/shipping-rules.json')).json();
     $('helpLink').href = `mailto:${cfg.publicSite.supportEmail}`;
+    if (cfg.publicSite.homeUrl) $('homeLink').href = cfg.publicSite.homeUrl;
   } catch { /* non-essential */ }
 
   const res = await fetch(`/.netlify/functions/order-status?b=${encodeURIComponent(params.get('b') || '')}&t=${encodeURIComponent(params.get('t') || '')}`);
