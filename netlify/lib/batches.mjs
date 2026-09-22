@@ -38,7 +38,7 @@ export function buildBatch({ id, test = false, source = 'staff', buyer = {}, pri
       address1: r.address1, address2: r.address2 || '', city: r.city, state: r.state, zip: r.zip,
       phone: r.phone || '', email: r.email || '',
       giftMessage: r.giftMessage || '', deliveryDate: r.deliveryDate || '',
-      lines: r.lines.map((l) => ({ sku: l.sku, variantId: l.variantId, qty: Number(l.qty), title: l.title || '' })),
+      lines: r.lines.map((l) => ({ sku: l.sku, variantId: l.variantId, qty: Number(l.qty), title: l.title || '', price: l.price || null })),
       quote: r.quote,
       child: null
     };
@@ -67,6 +67,21 @@ export function buildBatch({ id, test = false, source = 'staff', buyer = {}, pri
     recipients: stored,
     log: [{ at: now(), msg: test ? 'Test batch created — no invoice.' : `Batch created (${source}).` }]
   };
+}
+
+/* Every product in the batch, with how many of each. This is what the
+   invoice itemises, so the buyer and the admin see what was ordered. */
+export function productSummary(recipients) {
+  const by = new Map();
+  for (const r of recipients) {
+    for (const l of r.lines) {
+      if (!by.has(l.sku)) by.set(l.sku, { sku: l.sku, title: l.title || l.sku, price: l.price, qty: 0 });
+      by.get(l.sku).qty += Number(l.qty);
+    }
+  }
+  const list = [...by.values()].sort((a, b) => a.title.localeCompare(b.title));
+  // Only itemise if every product has a price and the maths reconciles.
+  return list.every((p) => p.price != null) ? list : null;
 }
 
 /* --- Parent invoice ------------------------------------------------------ */
@@ -107,11 +122,34 @@ export async function createBatchWithInvoice(batch) {
   const t = batch.totalsCents;
   const n = batch.recipients.length;
   const tagPrefix = rules.orderDefaults.batchTagPrefix;
-  const lineItems = [customLine(
-    `Corporate gift batch ${batch.id} — ${n} recipient${n === 1 ? '' : 's'}, ${t.units} gift${t.units === 1 ? '' : 's'}`,
-    t.merchandise
-  )];
-  if (t.shipping > 0) lineItems.push(customLine(`Shipping — ${n} destination${n === 1 ? '' : 's'}`, t.shipping));
+
+  // Itemise the invoice by product — the buyer sees what they bought and the
+  // admin order reads like an order. These are custom lines, not variants, so
+  // paying the invoice does not touch stock: inventory moves on the recipient
+  // orders, which carry the real variants.
+  const products = productSummary(batch.recipients);
+  const lineItems = [];
+  let discount = t.discount;
+
+  if (products && products.reduce((sum, p) => sum + toCents(p.price) * p.qty, 0) === t.gross) {
+    products.forEach((p) => lineItems.push({
+      title: p.title,
+      quantity: p.qty,
+      originalUnitPriceWithCurrency: { amount: p.price, currencyCode: rules.pricing.currencyCode },
+      taxable: false,
+      requiresShipping: false
+    }));
+  } else {
+    // Prices or totals don't reconcile — fall back to one line rather than
+    // show the buyer an itemisation that doesn't add up.
+    lineItems.push(customLine(
+      `Corporate gift batch ${batch.id} — ${n} recipient${n === 1 ? '' : 's'}, ${t.units} gift${t.units === 1 ? '' : 's'}`,
+      t.merchandise
+    ));
+    discount = 0;
+  }
+
+  if (t.shipping > 0) lineItems.push(customLine(`Shipping — ${n} destination${n === 1 ? '' : 's'} (UPS)`, t.shipping));
   if (t.tax > 0) lineItems.push(customLine('Sales tax — calculated per destination', t.tax));
 
   const input = {
@@ -123,9 +161,20 @@ export async function createBatchWithInvoice(batch) {
       (batch.buyer.dob ? ` Buyer DOB given: ${batch.buyer.dob}.` : ''),
     tags: [...rules.orderDefaults.parentOrderTags, `${tagPrefix}${batch.id}`, `bulk-source-${batch.source}`],
     taxExempt: true,
-    customAttributes: [{ key: 'Bulk Batch', value: batch.id }],
+    customAttributes: [
+      { key: 'Bulk Batch', value: batch.id },
+      { key: 'Recipients', value: String(n) }
+    ],
     lineItems
   };
+  if (discount > 0) {
+    input.appliedDiscount = {
+      title: `Corporate volume discount${batch.pricing.discountPct ? ` (${batch.pricing.discountPct}%)` : ''}`,
+      description: 'Applied per recipient',
+      value: Number(fromCents(discount)),
+      valueType: 'FIXED_AMOUNT'
+    };
+  }
   if (batch.buyer.poNumber) input.poNumber = batch.buyer.poNumber;
   if (batch.buyer.phone) input.phone = batch.buyer.phone;
 

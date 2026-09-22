@@ -87,7 +87,9 @@ function handle(query, vars) {
       taxLines: [{ title: i.shippingAddress.provinceCode + ' State Tax', rate, priceSet: bag(tax) }] } } };
   }
   if (query.includes('draftOrderCreate')) {
-    const total = vars.input.lineItems.reduce((n, l) => n + cents(l.originalUnitPriceWithCurrency.amount) * l.quantity, 0);
+    const gross = vars.input.lineItems.reduce((n, l) => n + cents(l.originalUnitPriceWithCurrency.amount) * l.quantity, 0);
+    const d = vars.input.appliedDiscount;
+    const total = gross - (d ? (d.valueType === 'FIXED_AMOUNT' ? cents(String(d.value)) : Math.round(gross * d.value / 100)) : 0);
     const id = 'gid://shopify/DraftOrder/' + (++S.draftN);
     S.drafts[id] = { id, name: '#D' + S.draftN, input: vars.input, total, order: null };
     return { draftOrderCreate: { userErrors: [], draftOrder: {
@@ -178,7 +180,7 @@ const mk = (first, city, state, zip, lines, extra = {}) => ({
   key: first, rows: [2], firstName: first, lastName: 'Test', company: 'Acme', address1: '1 Main St', address2: '',
   city, state, zip, phone: '8055550100', email: first.toLowerCase() + '@example.com',
   giftMessage: 'Great year, ' + first, deliveryDate: '', lines, ...extra });
-const L = (sku, qty = 1) => ({ sku, variantId: V[sku].id, qty, title: V[sku].title });
+const L = (sku, qty = 1) => ({ sku, variantId: V[sku].id, qty, title: V[sku].title, price: V[sku].price });
 const recips = [
   mk('Ava', 'Los Angeles', 'CA', '90001', [L('BSKT-053')]),
   mk('Ben', 'Austin', 'TX', '73301', [L('BSKT-016'), L('BSKT-032', 2)]),
@@ -203,6 +205,7 @@ ok((await call('quote-batch', { body: { recipients: recips, pricing: { discountP
 
 const withQuotes = recips.map(r => ({ ...r, quote: q.data.quotes[r.key] }));
 const expectTotal = withQuotes.reduce((n, r) => n + r.quote.cents.total, 0);
+const expectTotalDiscount = withQuotes.reduce((n, r) => n + r.quote.cents.discount, 0);
 
 console.log('\nCreate — invoice batch');
 const buyer = { name: 'Pat Buyer', company: 'Acme Corp', email: 'pat@acme.com', poNumber: 'PO-77' };
@@ -213,6 +216,14 @@ const draft = Object.values(S.drafts)[0];
 ok(draft.total === expectTotal, `parent invoice = sum of per-destination quotes ($${amt(expectTotal)})`);
 ok(draft.input.taxExempt === true, 'parent is tax-exempt (tax is its own line, no double tax)');
 ok(draft.input.lineItems.every(l => l.taxable === false && l.requiresShipping === false && !l.variantId), 'parent lines are custom: no inventory, no shipping step');
+const named = draft.input.lineItems.filter(l => !/^(Shipping|Sales tax)/.test(l.title));
+ok(named.length === 3, 'invoice is itemised: one line per product, not one lump');
+const gin = named.find(l => l.title.includes('Gin and Tonic'));      // Ava + Dee
+const bbq = named.find(l => l.title.includes('BBQ'));                 // Ben ×2 + Cal
+ok(gin.quantity === 2 && gin.originalUnitPriceWithCurrency.amount === '249.95', 'a product two people get is one line, quantity 2, at its real unit price');
+ok(bbq.quantity === 3, 'quantities add up across recipients (2 + 1 = 3)');
+ok(draft.input.lineItems.some(l => /^Shipping/.test(l.title)) && draft.input.lineItems.some(l => /^Sales tax/.test(l.title)), 'shipping and tax are their own labelled lines');
+ok(draft.input.appliedDiscount.valueType === 'FIXED_AMOUNT' && cents(String(draft.input.appliedDiscount.value)) === expectTotalDiscount, 'volume discount applied as the exact amount quoted');
 ok(draft.input.tags.includes('bulk-parent') && draft.input.tags.includes('batch-B20260921-INV1'), 'parent tagged bulk-parent + batch');
 ok(draft.input.poNumber === 'PO-77', 'PO number carried to the invoice');
 ok(!c1.data.batch.log.some(l => /WARNING/.test(l.msg)), 'unpadded Shopify amount ("x.5") does not trigger a false mismatch');

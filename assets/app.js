@@ -506,7 +506,7 @@ function buildRecipients() {
     const existing = g.lines.find(l => l.sku === r.sku);
     if (existing) existing.qty += +r.qty || 0;
     else g.lines.push({
-      sku: r.sku, variantId: hit.variantId || null, qty: +r.qty || 0,
+      sku: r.sku, variantId: hit.variantId || null, qty: +r.qty || 0, price: hit.price || null,
       title: [hit.title, hit.variantTitle].filter(Boolean).join(' — ')
     });
   });

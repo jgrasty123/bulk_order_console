@@ -71,6 +71,7 @@ export default async (req) => {
       if (!item) return bad(`${who}: “${l.sku}” isn’t available for corporate orders.`);
       l.variantId = item.variantId;
       l.title = item.title;
+      l.price = item.price;
     }
     const problem = verifyQuote(r, r.quote);
     if (problem === 'expired') return bad('Your prices are more than 3 hours old. Please re-check your order to refresh them.', 'stale_quote');
