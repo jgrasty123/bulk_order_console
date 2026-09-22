@@ -73,20 +73,41 @@ become one order with several items; the same SKU twice in a group is summed.
 
 ## Order model
 
-**The buyer pays one Shopify draft-order invoice. Child orders go in at $0.**
+**The buyer pays one invoice. Recipient orders go in at $0 after payment.**
 
 ```
-   parent draft order                       child orders (one per recipient)
+   invoice (a real Shopify order)           recipient orders (one each)
  ┌─────────────────────────────────┐      ┌─────────────────────────────────────┐
- │ custom lines, no inventory:     │      │ real variants, real destination     │
- │   Corporate gift batch B…       │      │ $0 lines, financial status PAID     │
- │   Shipping — N destinations     │ ───▶ │ tags: bulk-child, batch-B…          │
- │   Sales tax — per destination   │ paid │ attrs: gift message, delivery date, │
- │ taxExempt (tax is its own line) │      │        adult signature, parent #    │
- │ tags: bulk-parent, batch-B…     │      │ no customer, no Shopify emails      │
+ │ real product variants + prices  │      │ real variants, real destination     │
+ │ real shipping line              │      │ $0 lines, financial status PAID     │
+ │ real tax lines, per jurisdiction│ ───▶ │ tags: bulk-child, batch-B…          │
+ │ real discount, exact amount     │ paid │ attrs: gift message, delivery date, │
+ │ unpaid until the buyer pays     │      │        adult signature, invoice #   │
+ │ inventory BYPASS, no address    │      │ inventory DECREMENT; no emails      │
+ │ tags: bulk-parent, batch-B…     │      │ no customer record                  │
  └─────────────────────────────────┘      └─────────────────────────────────────┘
-        carries revenue + payment               carries fulfilment + inventory
+      carries payment and tax                  carries fulfilment and stock
 ```
+
+**Why a real order, not a draft:** draft orders can't hold tax lines, and
+can't hold a shipping line without a single shipping address — a bulk order
+has many. As a draft, products/shipping/tax all had to be faked as custom
+line items. `orderInvoiceSend` gives the same pay-by-invoice flow on a real
+order, so every value lands in its proper place and Shopify's tax reports
+are right.
+
+**Stock moves once,** on the recipient orders, when they are created after
+payment. The invoice bypasses inventory, so an unpaid invoice never reserves
+anything and an abandoned one costs nothing.
+
+**The trade-off:** the same products appear on two orders (the invoice with
+the money, the recipient's at $0), so Shopify's *product analytics count
+units twice*. Revenue counts once and inventory moves once. Accepted
+deliberately (James, Sep 2026) in exchange for real line items on the invoice.
+
+**ShipStation:** exclude the tag `bulk-parent`. The invoice is a real,
+unpaid, unfulfilled order with no shipping address; only the child orders
+should be imported.
 
 Tax is calculated by Shopify at each recipient's address (`draftOrderCalculate`)
 and summed onto the parent. Shopify's own tax reports will therefore show it as

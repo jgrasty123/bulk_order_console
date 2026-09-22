@@ -686,7 +686,7 @@ function renderBatch() {
   const p = b.parent;
   show('bInvoice', Boolean(p));
   if (p) {
-    $('bDraft').textContent = p.orderName || p.draftName;
+    $('bDraft').textContent = p.orderName || '—';
     $('bTotal').textContent = '$' + b.totals.total;
     $('bSent').textContent = p.invoiceSentAt ? `· emailed ${new Date(p.invoiceSentAt).toLocaleString()}` : '· not emailed yet';
     $('bInvoiceLink').href = p.invoiceUrl || '#';
