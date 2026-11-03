@@ -83,8 +83,8 @@ become one order with several items; the same SKU twice in a group is summed.
  │ real tax lines, per jurisdiction│ ───▶ │ tags: bulk-child, batch-B…          │
  │ real discount, exact amount     │ paid │ attrs: gift message, delivery date, │
  │ unpaid until the buyer pays     │      │        adult signature, invoice #   │
- │ inventory BYPASS, no address    │      │ inventory DECREMENT; no emails      │
- │ tags: bulk-parent, batch-B…     │      │ no customer record                  │
+ │ inventory BYPASS, no address    │      │ inventory DECREMENT; no receipts    │
+ │ tags: bulk-parent, batch-B…     │      │ buyer's customer                    │
  └─────────────────────────────────┘      └─────────────────────────────────────┘
       carries payment and tax                  carries fulfilment and stock
 ```

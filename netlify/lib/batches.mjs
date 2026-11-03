@@ -109,6 +109,7 @@ const CREATE_PARENT = `
     orderCreate(order: $order, options: $options) {
       order {
         id name
+        customer { id }
         totalPriceSet { shopMoney { amount } }
         paymentCollectionDetails { additionalPaymentCollectionUrl }
       }
@@ -140,6 +141,17 @@ export function taxLinesFor(recipients) {
   return [...by.values()].filter((t) => t.cents > 0).sort((a, b) => b.cents - a.cents);
 }
 
+/* The buyer as a Shopify customer: matched by email, so a repeat buyer keeps
+   one customer record across batches. Phone is left off on purpose — a phone
+   already on another customer makes the whole order fail. */
+export function buyerCustomer(buyer) {
+  const parts = String(buyer.name || '').trim().split(/\s+/).filter(Boolean);
+  const c = { email: buyer.email };
+  if (parts.length) c.firstName = parts[0];
+  if (parts.length > 1) c.lastName = parts.slice(1).join(' ');
+  return c;
+}
+
 export async function createBatchWithInvoice(batch) {
   const claimed = await reserveBatch({ ...batch, status: 'creating' });
   if (!claimed) {
@@ -168,6 +180,9 @@ export async function createBatchWithInvoice(batch) {
 
   const order = {
     email: batch.buyer.email,
+    // Create (or reuse, matched by email) the buyer's customer record, named,
+    // so the recipient orders can be attached to the same customer.
+    customer: { toUpsert: buyerCustomer(batch.buyer) },
     financialStatus: 'PENDING',                 // unpaid until they pay the invoice
     sourceName: rules.orderDefaults.sourceName,
     currency: rules.pricing.currencyCode,
@@ -229,6 +244,7 @@ export async function createBatchWithInvoice(batch) {
     batch.parent = {
       orderId: o.id,
       orderName: o.name,
+      customerId: (o.customer && o.customer.id) || null,
       invoiceUrl: (o.paymentCollectionDetails && o.paymentCollectionDetails.additionalPaymentCollectionUrl) || null,
       financialStatus: 'PENDING'
     };

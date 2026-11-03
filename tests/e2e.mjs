@@ -108,6 +108,7 @@ function handle(query, vars) {
                   financialStatus: 'PENDING', cancelledAt: null, sent: null };
     S.parents[id] = rec;
     return { orderCreate: { userErrors: [], order: { id, name: rec.name,
+      customer: { id: 'gid://shopify/Customer/900' },
       totalPriceSet: { shopMoney: { amount: (rec.total / 100).toString() } },
       paymentCollectionDetails: { additionalPaymentCollectionUrl: 'https://shop.test/pay/' + S.draftN } } } };
   }
@@ -293,7 +294,12 @@ console.log('\nChild order contents');
 const ben = orderFor('Ben')[0];
 ok(ben.input.lineItems.every(l => l.priceSet.shopMoney.amount === '0.00'), 'child lines are $0');
 ok(ben.input.lineItems.length === 2 && ben.input.lineItems.find(l => l.variantId === V['BSKT-032'].id).quantity === 2, 'child carries real variants and quantities');
-ok(ben.input.financialStatus === 'PAID' && !ben.input.email && !ben.input.customer, 'marked paid; no email or customer attached');
+ok(ben.input.financialStatus === 'PAID', 'marked paid');
+ok(ben.input.email === 'pat@acme.com' && ben.input.customer && ben.input.customer.toAssociate &&
+   ben.input.customer.toAssociate.id === 'gid://shopify/Customer/900', 'child attached to the buyer\'s customer (from the parent) with the buyer\'s email');
+const parentIn = Object.values(S.parents).find(p => p.input.tags.includes('batch-B20260921-INV1')).input;
+ok(parentIn.customer.toUpsert.email === 'pat@acme.com' && parentIn.customer.toUpsert.firstName === 'Pat' &&
+   parentIn.customer.toUpsert.lastName === 'Buyer' && !('phone' in parentIn.customer.toUpsert), 'parent upserts a named buyer customer, no phone');
 ok(ben.options.sendReceipt === false && ben.options.sendFulfillmentReceipt === false, 'recipient receives no Shopify emails');
 ok(ben.options.inventoryBehaviour === 'DECREMENT_OBEYING_POLICY', 'inventory decremented on the child');
 ok(ben.input.tags.includes('bulk-child') && ben.input.tags.includes('batch-B20260921-INV1'), 'child tagged bulk-child + batch');
@@ -317,6 +323,7 @@ await Promise.all([
 const testOrders = S.orders.slice(n0);
 ok(testOrders.length === 4, `two simultaneous releases → 4 orders, not 8 (got ${testOrders.length})`);
 ok(testOrders.every(o => o.input.test === true && o.input.tags.includes('bulk-test')), 'test batch orders are Shopify test orders tagged bulk-test');
+ok(testOrders.every(o => !o.input.customer && !o.input.email), 'test batch orders are not attached to any customer');
 
 console.log('\nBatch list');
 const list = await call('batch-status', { method: 'GET' });
