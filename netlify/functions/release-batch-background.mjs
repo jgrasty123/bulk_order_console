@@ -10,12 +10,15 @@
      - a heartbeat lock stops two runs overlapping
      - progress is saved after every recipient, so a timeout loses nothing
 
-   Recipients never receive a Shopify email: receipts are switched off, and
-   no customer record is attached to child orders.
+   Every child order is attached to the BUYER's customer record (the same one
+   as the parent invoice) and carries the buyer's email, so Shopify's shipping
+   updates for each recipient go to the buyer. Recipients never receive a
+   Shopify email; order-created receipts are switched off.
    ========================================================================== */
 
 import { gql, env } from '../lib/shopify.mjs';
 import { denied, claimRelease, loadBatch, saveBatch, rules } from '../lib/common.mjs';
+import { buyerCustomer } from '../lib/batches.mjs';
 
 const CREATE_CHILD = `
   mutation CreateChild($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
@@ -101,7 +104,20 @@ function childOrder(batch, r) {
     sourceName: d.sourceName,
     sourceIdentifier: r.key,
     poNumber: batch.buyer.poNumber || null,
-    test: Boolean(batch.test)
+    test: Boolean(batch.test),
+    ...buyerLink(batch)
+  };
+}
+
+/* Attach the child to the buyer: by the parent's customer id when we have it,
+   otherwise (batches invoiced before this was recorded) by email. Test
+   batches stay unattached so nothing ever emails a real buyer about them. */
+function buyerLink(batch) {
+  if (batch.test || !batch.buyer.email) return {};
+  const id = batch.parent && batch.parent.customerId;
+  return {
+    email: batch.buyer.email,
+    customer: id ? { toAssociate: { id } } : { toUpsert: buyerCustomer(batch.buyer) }
   };
 }
 
