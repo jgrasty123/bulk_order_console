@@ -108,6 +108,13 @@ export async function gql(query, variables = {}, { retries = 5, safeToRetry } = 
 
     if (body.errors) {
       const msg = body.errors.map((e) => e.message).join('; ');
+      // A write that came back with data AND errors ran: Shopify executes the
+      // mutation and only fails the fields it can't return. Reporting that as
+      // a plain failure is how a buyer ends up resubmitting and creating
+      // duplicate orders, so it is ambiguous, never "did not happen".
+      if (isWrite && body.data && Object.values(body.data).some((v) => v != null)) {
+        throw new AmbiguousWriteError(`Shopify ran the write but returned an error: ${msg}`);
+      }
       if (/access denied|scope/i.test(msg)) throw new ConfigError(msg);
       throw new Error(`Shopify GraphQL: ${msg}`);
     }

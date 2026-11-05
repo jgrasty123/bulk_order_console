@@ -13,7 +13,7 @@ import { loadCatalog, verifyQuote } from '../lib/pricing.mjs';
 import { rateLimited, botCheck } from '../lib/guard.mjs';
 import { buildBatch, createBatchWithInvoice, newBatchId, sendInvoice } from '../lib/batches.mjs';
 import { saveBatch } from '../lib/common.mjs';
-import { env } from '../lib/shopify.mjs';
+import { env, AmbiguousWriteError } from '../lib/shopify.mjs';
 import { checkRecipient, discountFor, normaliseState, clean, isAdult, EMAIL_RE } from '../../shared/rules.mjs';
 
 const bad = (message, error = 'invalid') => json(400, { error, message });
@@ -117,6 +117,15 @@ export default async (req) => {
     return json(200, { id: batch.id, invoiceUrl: batch.parent.invoiceUrl, statusUrl, total: batch.totals.total });
   } catch (err) {
     if (err.status) return json(err.status, { error: 'create', message: err.message });
+    // The invoice may exist even though we couldn't confirm it. Tell the buyer
+    // not to resubmit — a retry creates a second invoice.
+    if (err instanceof AmbiguousWriteError) {
+      return json(502, { error: 'maybe_created', message: MAYBE_CREATED });
+    }
     return fail(err);
   }
 };
+
+const MAYBE_CREATED =
+  "We may have received your order but couldn't confirm it. Please don't submit it again — " +
+  "we'll email your invoice shortly, or reach out to sort it out.";
