@@ -108,7 +108,6 @@ function handle(query, vars) {
                   financialStatus: 'PENDING', cancelledAt: null, sent: null };
     S.parents[id] = rec;
     return { orderCreate: { userErrors: [], order: { id, name: rec.name,
-      customer: { id: 'gid://shopify/Customer/900' },
       totalPriceSet: { shopMoney: { amount: (rec.total / 100).toString() } },
       paymentCollectionDetails: { additionalPaymentCollectionUrl: 'https://shop.test/pay/' + S.draftN } } } };
   }
@@ -154,6 +153,12 @@ globalThis.fetch = async (url, init) => {
     const { query, variables } = JSON.parse(init.body);
     try {
       const data = handle(query, variables || {});
+      // Like the real token: no read_customers scope. Shopify still runs a
+      // mutation but answers with data AND an access-denied error.
+      const partial = /\bcustomer\s*\{/.test(query) || (S.partialErrorOnce && /mutation CreateParent/.test(query) && !(S.partialErrorOnce = false));
+      if (partial) {
+        return new Response(JSON.stringify({ data, errors: [{ message: 'Access denied for customer field. Required access: `read_customers` access scope.' }], extensions: { cost: throttle } }), { status: 200 });
+      }
       return new Response(JSON.stringify({ data, extensions: { cost: throttle } }), { status: 200 });
     } catch (e) {
       if (e.message === 'socket hang up') throw new TypeError('fetch failed');
@@ -295,8 +300,8 @@ const ben = orderFor('Ben')[0];
 ok(ben.input.lineItems.every(l => l.priceSet.shopMoney.amount === '0.00'), 'child lines are $0');
 ok(ben.input.lineItems.length === 2 && ben.input.lineItems.find(l => l.variantId === V['BSKT-032'].id).quantity === 2, 'child carries real variants and quantities');
 ok(ben.input.financialStatus === 'PAID', 'marked paid');
-ok(ben.input.email === 'pat@acme.com' && ben.input.customer && ben.input.customer.toAssociate &&
-   ben.input.customer.toAssociate.id === 'gid://shopify/Customer/900', 'child attached to the buyer\'s customer (from the parent) with the buyer\'s email');
+ok(ben.input.email === 'pat@acme.com' && ben.input.customer && ben.input.customer.toUpsert &&
+   ben.input.customer.toUpsert.email === 'pat@acme.com', 'child attached to the buyer\'s customer by email, with the buyer\'s email');
 const parentIn = Object.values(S.parents).find(p => p.input.tags.includes('batch-B20260921-INV1')).input;
 ok(parentIn.customer.toUpsert.email === 'pat@acme.com' && parentIn.customer.toUpsert.firstName === 'Pat' &&
    parentIn.customer.toUpsert.lastName === 'Buyer' && !('phone' in parentIn.customer.toUpsert), 'parent upserts a named buyer customer, no phone');
@@ -405,6 +410,14 @@ ok(sub.status === 200 && sub.data.invoiceUrl && sub.data.statusUrl, 'valid order
 const pd = Object.values(S.parents)[parentsBefore];
 ok(pd.input.tags.includes('bulk-source-customer') && pd.input.email === 'jo@acme.test', 'invoice tagged as a customer order, billed to the buyer');
 ok(pd.sent && pd.sent.customMessage && pd.sent.customMessage.includes(sub.data.statusUrl), 'invoice email carries the status link');
+
+console.log('\nPublic: invoice created but Shopify answer has an error');
+const pBefore = Object.keys(S.parents).length;
+S.partialErrorOnce = true;
+const amb = await pub('order-submit', { body: { buyer: buyerP, recipients: withQ, deliveryDate: '2099-12-01' } });
+ok(amb.status === 502 && amb.data.error === 'maybe_created' && /don't submit it again/.test(amb.data.message), 'buyer told the order may exist and not to resubmit');
+ok(Object.keys(S.parents).length === pBefore + 1, 'exactly one invoice created');
+ok(!/read_customers|Access denied/.test(amb.data.message), 'no raw Shopify error shown to the buyer');
 
 console.log('\nPublic: status page');
 const su = new URL(sub.data.statusUrl);

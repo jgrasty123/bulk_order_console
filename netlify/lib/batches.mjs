@@ -109,7 +109,6 @@ const CREATE_PARENT = `
     orderCreate(order: $order, options: $options) {
       order {
         id name
-        customer { id }
         totalPriceSet { shopMoney { amount } }
         paymentCollectionDetails { additionalPaymentCollectionUrl }
       }
@@ -244,7 +243,6 @@ export async function createBatchWithInvoice(batch) {
     batch.parent = {
       orderId: o.id,
       orderName: o.name,
-      customerId: (o.customer && o.customer.id) || null,
       invoiceUrl: (o.paymentCollectionDetails && o.paymentCollectionDetails.additionalPaymentCollectionUrl) || null,
       financialStatus: 'PENDING'
     };

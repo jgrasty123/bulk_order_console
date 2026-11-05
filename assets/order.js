@@ -780,7 +780,16 @@ async function submit() {
         recipients: priced.recipients.map((r) => ({ ...r, quote: priced.quotes[r.key] }))
       })
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
+    // A timeout, or the server saying the invoice may exist: lock the button
+    // so a retry can't create a second invoice.
+    if (data.error === 'maybe_created' || res.status === 504) {
+      const e = new Error(data.message ||
+        "We may have received your order but couldn't confirm it. Please don't submit it again — " +
+        "we'll email your invoice shortly, or reach out to sort it out.");
+      e.locked = true;
+      throw e;
+    }
     if (!res.ok) {
       if (data.error === 'stale_quote' || data.error === 'bad_quote') invalidate();
       throw new Error(data.message || 'Something went wrong.');
@@ -795,6 +804,7 @@ async function submit() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   } catch (e) {
     err(e.message);
+    if (e.locked) { $('submitBtn').textContent = 'Please wait for our email'; return; }
     $('submitBtn').disabled = false;
     $('submitBtn').textContent = `Continue to secure checkout · ${usd(priced ? priced.total : 0)}`;
   }

@@ -109,16 +109,14 @@ function childOrder(batch, r) {
   };
 }
 
-/* Attach the child to the buyer: by the parent's customer id when we have it,
-   otherwise (batches invoiced before this was recorded) by email. Test
-   batches stay unattached so nothing ever emails a real buyer about them. */
+/* Attach the child to the buyer's customer, matched by email (the same record
+   the parent invoice upserted). Done by upsert rather than by customer id so
+   the token never has to READ customers — it has no read_customers scope,
+   and asking for a customer field fails the whole response. Test batches
+   stay unattached so nothing ever emails a real buyer about them. */
 function buyerLink(batch) {
   if (batch.test || !batch.buyer.email) return {};
-  const id = batch.parent && batch.parent.customerId;
-  return {
-    email: batch.buyer.email,
-    customer: id ? { toAssociate: { id } } : { toUpsert: buyerCustomer(batch.buyer) }
-  };
+  return { email: batch.buyer.email, customer: { toUpsert: buyerCustomer(batch.buyer) } };
 }
 
 export default async (req) => {
