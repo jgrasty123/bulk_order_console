@@ -694,6 +694,13 @@ function renderBatch() {
     $('sendInvoice').disabled = !open;
     $('checkPayment').disabled = !open;
     $('sendInvoice').textContent = p.invoiceSentAt ? 'Email invoice again' : 'Email invoice to buyer';
+    const paid = ['paid', 'releasing', 'released', 'partial'].includes(b.status);
+    const rc = b.receipt || {};
+    show('sendReceipt', paid);
+    $('sendReceipt').textContent = rc.sentAt ? 'Email receipt again' : 'Email payment receipt';
+    $('bReceipt').textContent = !paid ? '' :
+      rc.sentAt ? `Payment receipt emailed to ${rc.to || b.buyer.email} · ${new Date(rc.sentAt).toLocaleString()}` :
+      rc.error ? `Payment receipt failed: ${rc.error}` : 'Payment receipt not emailed yet.';
   }
 
   // Release control
@@ -762,6 +769,40 @@ async function sendInvoice() {
   } catch (err) {
     alert(err.message);
     $('sendInvoice').disabled = false;
+  }
+}
+
+async function downloadPdf() {
+  const btn = $('downloadPdf');
+  btn.disabled = true;
+  try {
+    const res = await fetch('/.netlify/functions/invoice-pdf?id=' + encodeURIComponent(currentBatch.id), {
+      headers: { 'x-console-key': keyStore.getItem(KEY_STORE) || '' }
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message || `Download failed (${res.status}).`);
+    const blob = await res.blob();
+    const name = (/filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '') || [])[1] || `Invoice-${currentBatch.id}.pdf`;
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: name });
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function sendReceipt() {
+  const to = prompt('Send the payment receipt (with the paid PDF invoice link) to:', currentBatch.buyer.email);
+  if (!to) return;
+  $('sendReceipt').disabled = true;
+  try {
+    await api('send-receipt', { method: 'POST', body: { id: currentBatch.id, to: to.trim() } });
+    await refreshBatch();
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    $('sendReceipt').disabled = false;
   }
 }
 
@@ -879,6 +920,8 @@ function init() {
 
   $('sendInvoice').addEventListener('click', sendInvoice);
   $('checkPayment').addEventListener('click', refreshBatch);
+  $('downloadPdf').addEventListener('click', downloadPdf);
+  $('sendReceipt').addEventListener('click', sendReceipt);
   $('releaseBtn').addEventListener('click', release);
   $('taxCsvBatch').addEventListener('click', () => downloadCsv(
     `${currentBatch.id}-tax.csv`, TAX_FIELDS, taxRows(currentBatch.recipients, r => r.quote)));

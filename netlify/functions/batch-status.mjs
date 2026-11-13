@@ -4,7 +4,7 @@
    GET           → recent batches
    ========================================================================== */
 
-import { json, fail, denied, loadBatch, saveBatch, listBatches } from '../lib/common.mjs';
+import { json, fail, denied, loadBatch, saveBatch, listBatches, loadMarker } from '../lib/common.mjs';
 import { refreshPayment, refreshTracking, autoReleases, startRelease } from '../lib/batches.mjs';
 
 const STALE_LOCK_MS = 2 * 60 * 1000;
@@ -35,5 +35,6 @@ export default async (req) => {
   } catch (err) {
     return fail(err);
   }
-  return json(200, { batch });
+  const receipt = await loadMarker(`receipt/${batch.id}`).catch(() => null);
+  return json(200, { batch: { ...batch, receipt } });
 };

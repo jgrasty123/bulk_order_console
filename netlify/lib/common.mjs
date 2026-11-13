@@ -108,6 +108,25 @@ export async function claimRelease(id, isReleasable) {
   return current;
 }
 
+/* One-time markers, kept apart from the batch record so a write here can
+   never race a release run's own saves. claimOnce is write-then-verify like
+   the claims above: true for exactly one caller, ever, per key. */
+export async function claimOnce(key) {
+  const claim = runId();
+  const res = await store().setJSON(`once/${key}`, { claim, at: new Date().toISOString() }, { onlyIfNew: true });
+  if (!res.modified) return false;
+  await sleep(SETTLE_MS);
+  const current = await store().get(`once/${key}`, { type: 'json' });
+  return Boolean(current && current.claim === claim);
+}
+
+export const loadMarker = (key) => store().get(`once/${key}`, { type: 'json' });
+
+export async function updateMarker(key, data) {
+  const cur = (await loadMarker(key)) || {};
+  await store().setJSON(`once/${key}`, { ...cur, ...data });
+}
+
 export async function listBatches(limit = 25) {
   const { blobs } = await store().list({ prefix: 'batch/' });
   const all = await Promise.all(

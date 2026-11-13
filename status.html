@@ -45,7 +45,10 @@
       <p class="muted mono" id="sId"></p>
       <h2 id="sHead"></h2>
       <p id="sText"></p>
-      <div class="actions actions--left" id="payWrap" hidden><a class="btn btn--primary btn--big" id="payLink" href="#">Pay now</a></div>
+      <div class="actions actions--left">
+        <span id="payWrap" hidden><a class="btn btn--primary btn--big" id="payLink" href="#">Pay now</a></span>
+        <a class="btn btn--big" id="pdfLink" href="#" hidden>Download PDF invoice</a>
+      </div>
       <div class="summary" id="sSummary"></div>
       <div class="sheet" style="margin-top:1.25rem"><table class="sheet__table sheet__table--read">
         <thead><tr><th>Recipient</th><th>Destination</th><th>Gift</th><th>Order</th><th>Delivery</th></tr></thead>
@@ -54,6 +57,6 @@
     </div>
   </section>
 </main>
-<script type="module" src="/assets/status.js?v=99de0d22"></script>
+<script type="module" src="/assets/status.js?v=e87e26c2"></script>
 </body>
 </html>

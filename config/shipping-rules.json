@@ -83,5 +83,18 @@
     "_homeNote": "Where the Home link in the portal header goes — the main storefront.",
     "supportPhone": "",
     "_supportNote": "Shown in the Questions panel on the portal. A mailto link alone is unreliable — browsers without a mail app do nothing on click — so the address is also shown with a copy button. Add a phone number here and it appears too."
+  },
+  "invoice": {
+    "sellerName": "Go-To Gifting, LLC",
+    "brandName": "The BroBasket",
+    "addressLines": [
+      "2264 Goodyear Ave, STE C",
+      "Ventura, CA 93003"
+    ],
+    "phone": "844-446-2443",
+    "email": "info@thebrobasket.com",
+    "website": "thebrobasket.com",
+    "footer": "Thank you for your business. Questions about this invoice: info@thebrobasket.com or 844-446-2443.",
+    "_note": "Seller block and footer on the downloadable PDF invoice. Add a taxId line here if AP teams ask for an EIN / W-9 reference."
   }
 }

@@ -5,7 +5,7 @@
 
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { gql, env, fromCents, toCents, AmbiguousWriteError } from './shopify.mjs';
-import { rules, saveBatch, reserveBatch, recipientKey } from './common.mjs';
+import { rules, saveBatch, reserveBatch, recipientKey, claimOnce, updateMarker } from './common.mjs';
 
 const now = () => new Date().toISOString();
 
@@ -271,14 +271,77 @@ export async function createBatchWithInvoice(batch) {
   return batch;
 }
 
+/* --- Links the buyer gets --------------------------------------------------
+   Both carry the batch's private token, so they work without a login and
+   can be forwarded to an AP team. */
+
+const site = () => (env('URL') || env('DEPLOY_PRIME_URL') || '').replace(/\/$/, '');
+const q = (batch) => `b=${encodeURIComponent(batch.id)}&t=${encodeURIComponent(batch.statusToken)}`;
+export const statusLink = (batch) => batch.statusUrl || `${site()}/status.html?${q(batch)}`;
+export const invoicePdfLink = (batch) => `${site()}/invoice.pdf?${q(batch)}`;
+
+const money = (cents) => '$' + (cents / 100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+const brand = () => (rules.publicSite && rules.publicSite.brandName) || 'The BroBasket';
+
 export async function sendInvoice(batch, customMessage) {
   const vars = { id: batch.parent.orderId };
-  if (customMessage) vars.email = { to: batch.buyer.email, customMessage };
+  const n = batch.recipients.length;
+  const message = customMessage ||
+    `Thank you for your corporate order (${batch.id}) — ${n} recipient${n === 1 ? '' : 's'}. ` +
+    `Once it's paid, each gift is shipped separately. Follow every delivery here: ${statusLink(batch)}`;
+  vars.email = {
+    to: batch.buyer.email,
+    customMessage: `${message}\n\nPDF invoice for your accounts payable team: ${invoicePdfLink(batch)}`
+  };
   const out = (await gql(SEND, vars)).orderInvoiceSend;
   if (out.userErrors.length) throw new Error(out.userErrors.map((e) => e.message).join('; '));
   batch.parent.invoiceSentAt = now();
   batch.log.push({ at: now(), msg: `Invoice emailed to ${batch.buyer.email}.` });
   return batch;
+}
+
+/* --- Payment receipt ------------------------------------------------------
+   A Shopify checkout sends its own order confirmation, but this order was
+   created before it was paid, so paying it sends nothing. Shopify has no
+   API to send an order confirmation after the fact; the one email it will
+   send for an existing order is the invoice email. So once the payment
+   lands, that email goes again with a receipt subject and message and a
+   link to the paid PDF. */
+
+export async function sendPaymentReceipt(batch, { to } = {}) {
+  const n = batch.recipients.length;
+  const total = batch.totalsCents ? money(batch.totalsCents.total) : `$${batch.totals.total}`;
+  const name = batch.parent.orderName;
+  const out = (await gql(SEND, {
+    id: batch.parent.orderId,
+    email: {
+      to: to || batch.buyer.email,
+      subject: `Payment received — ${brand()} order ${name}`,
+      customMessage:
+        `Thank you! We've received your payment of ${total} for corporate order ${name} (${batch.id}), ` +
+        `${n} recipient${n === 1 ? '' : 's'}. Nothing more is due.\n\n` +
+        `Each gift is now being prepared and ships separately; you'll get a shipping email with tracking for each one.\n\n` +
+        `Paid PDF invoice for your records: ${invoicePdfLink(batch)}\n` +
+        `Follow every delivery: ${statusLink(batch)}`
+    }
+  })).orderInvoiceSend;
+  if (out.userErrors.length) throw new Error(out.userErrors.map((e) => e.message).join('; '));
+  return { sentAt: now(), to: to || batch.buyer.email };
+}
+
+/* Exactly once per batch, however many webhooks and page loads see the
+   payment at the same moment. Never saves the batch: a release run may be
+   saving it right now. The record lives in its own marker. */
+export async function sendReceiptOnce(batch) {
+  if (batch.test || !batch.parent || !batch.buyer.email) return false;
+  if (!(await claimOnce(`receipt/${batch.id}`))) return false;
+  try {
+    await updateMarker(`receipt/${batch.id}`, await sendPaymentReceipt(batch));
+    return true;
+  } catch (err) {
+    await updateMarker(`receipt/${batch.id}`, { error: err.message, failedAt: now() }).catch(() => {});
+    return false;
+  }
 }
 
 /* --- Payment ------------------------------------------------------------- */
@@ -315,6 +378,7 @@ export async function refreshPayment(batch) {
     batch.paidAt = now();
     batch.log.push({ at: now(), msg: `Invoice ${o.name} is paid.` });
     await saveBatch(batch);
+    await sendReceiptOnce(batch);
     return true;
   }
   await saveBatch(batch);
