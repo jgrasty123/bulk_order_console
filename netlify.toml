@@ -42,6 +42,13 @@
     Referrer-Policy = "no-referrer"
     Cache-Control = "no-store"
 
+# Pretty link for the PDF invoice in emails; the token in the query string
+# passes through to the function.
+[[redirects]]
+  from = "/invoice.pdf"
+  to = "/.netlify/functions/invoice-pdf"
+  status = 200
+
 [[headers]]
   for = "/shared/*"
   [headers.values]

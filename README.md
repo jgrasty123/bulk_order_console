@@ -23,6 +23,17 @@ their own batches and oversight. Replaces Zest.
    checkout for the batch total. Invoice email includes the tracking link.
 4. **Paid** → `orders/paid` webhook → recipient orders created automatically.
    The status page also re-checks payment, so a missed webhook still resolves.
+5. **Payment receipt** — Shopify sends no confirmation when an existing order
+   is paid (and has no API to send one later), so the moment payment lands the
+   portal re-sends the Shopify invoice email as a receipt: subject "Payment
+   received — … order #NNNN", paid amount, and links to the paid PDF and the
+   status page. Exactly once per batch (marker `once/receipt/<id>` in Blobs).
+   Staff can resend it, or send a copy to an AP inbox, from the console.
+6. **PDF invoice** — `/invoice.pdf?b=…&t=…` (same private token as the status
+   page). Linked from the invoice email, the receipt and the status page;
+   staff download any batch from the console. Shows PAYMENT DUE with a pay
+   link until paid, then PAID with a zero balance, plus a recipient schedule.
+   Seller block and footer: `invoice` in `config/shipping-rules.json`.
 
 ### Public-endpoint safety (covered by `npm test`)
 - Server re-runs every rule; only catalog products can be ordered.

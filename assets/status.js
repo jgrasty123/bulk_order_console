@@ -69,6 +69,10 @@ function render(b) {
   $('sText').textContent = text;
   $('payWrap').hidden = !b.invoiceUrl;
   if (b.invoiceUrl) { $('payLink').href = b.invoiceUrl; $('payLink').textContent = `Pay ${money(b.totals.total)} now`; }
+  // The PDF is for AP teams: available as soon as there is an invoice, and
+  // re-checks payment on download so a paid order downloads as PAID.
+  $('pdfLink').hidden = !b.orderName;
+  $('pdfLink').href = `/invoice.pdf?b=${encodeURIComponent(params.get('b') || '')}&t=${encodeURIComponent(params.get('t') || '')}`;
 
   const shipped = b.recipients.filter((r) => r.fulfillment === 'FULFILLED').length;
   $('sSummary').innerHTML =

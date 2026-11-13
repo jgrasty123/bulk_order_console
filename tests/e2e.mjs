@@ -114,6 +114,7 @@ function handle(query, vars) {
   if (query.includes('orderInvoiceSend')) {
     const p = S.parents[vars.id];
     p.sent = vars.email || true;
+    (S.sends = S.sends || []).push({ id: vars.id, ...(vars.email || {}) });
     return { orderInvoiceSend: { userErrors: [], order: { id: p.id, name: p.name } } };
   }
   if (query.includes('ParentStatus')) {
@@ -276,6 +277,40 @@ ok(st.data.batch.status === 'awaiting_payment', 'unpaid invoice stays awaiting_p
 inv.financialStatus = 'PAID';
 st = await call('batch-status', { method: 'GET', qs: '?id=B20260921-INV1' });
 ok(st.data.batch.status === 'paid' && st.data.batch.parent.orderName === inv.name, 'paid invoice flips the batch to paid');
+const receiptsFor = (pid) => (S.sends || []).filter(x => x.id === pid && /^Payment received/.test(x.subject || ''));
+ok(receiptsFor(inv.id).length === 1 && receiptsFor(inv.id)[0].to === 'pat@acme.com', 'payment landing emails the buyer a payment receipt');
+ok(receiptsFor(inv.id)[0].customMessage.includes('/invoice.pdf?b=B20260921-INV1&t='), 'receipt links the paid PDF invoice');
+ok(st.data.batch.receipt && st.data.batch.receipt.sentAt, 'staff view shows when the receipt went out');
+await call('batch-status', { method: 'GET', qs: '?id=B20260921-INV1' });
+ok(receiptsFor(inv.id).length === 1, 'checking again does not send a second receipt');
+const invoiceMsg = (S.sends || []).find(x => x.id === inv.id && !x.subject);
+ok(invoiceMsg && invoiceMsg.customMessage.includes('/invoice.pdf?b=B20260921-INV1'), 'the invoice email itself links the PDF for AP');
+
+console.log('\nPDF invoice');
+const raw = async (qs, key) => {
+  const f = await fn('invoice-pdf');
+  const headers = { 'x-nf-client-connection-ip': '203.0.113.50', ...(key ? { 'x-console-key': key } : {}) };
+  const res = await f(new Request('https://console.test/.netlify/functions/invoice-pdf' + qs, { method: 'GET', headers }));
+  return { status: res.status, type: res.headers.get('Content-Type'), cd: res.headers.get('Content-Disposition'), bytes: Buffer.from(await res.arrayBuffer()) };
+};
+const tok = st.data.batch.statusToken;
+const pdfOk = await raw(`?b=B20260921-INV1&t=${tok}`);
+ok(pdfOk.status === 200 && pdfOk.type === 'application/pdf' && pdfOk.bytes.subarray(0, 5).toString() === '%PDF-', 'right token downloads a PDF');
+ok(/attachment; filename="BroBasket-Invoice-\d+\.pdf"/.test(pdfOk.cd), 'PDF named for the invoice number');
+ok((await raw('?b=B20260921-INV1&t=wrong')).status === 404, 'wrong token: no PDF');
+ok((await raw('?id=B20260921-INV1')).status === 401, 'staff route needs the console key');
+ok((await raw('?id=B20260921-INV1', 'secret-key')).type === 'application/pdf', 'staff can download any batch PDF');
+{
+  const { PDFDocument } = await import('pdf-lib');
+  const doc = await PDFDocument.load(pdfOk.bytes);
+  ok(doc.getPageCount() >= 1 && doc.getTitle() === `Invoice ${inv.name}`, 'PDF parses and is titled with the invoice number');
+}
+
+console.log('\nReceipt resend');
+const rs = await call('send-receipt', { body: { id: 'B20260921-INV1', to: 'ap@acme.com' } });
+ok(rs.status === 200 && receiptsFor(inv.id).some(x => x.to === 'ap@acme.com'), 'staff can send the receipt to another address, e.g. the AP inbox');
+ok((await call('send-receipt', { body: { id: 'B20260921-DBL1' } })).status === 409, 'no receipt for an unpaid invoice');
+ok((await call('send-receipt', { body: { id: 'B20260921-INV1', to: 'nope' } })).status === 400, 'bad address refused');
 
 console.log('\nRelease — with one inventory failure and one dropped response');
 S.failSkuOnce = 'BSKT-032';        // Cal fails once
@@ -435,8 +470,13 @@ const forged = await pub('shopify-webhook', { body: payload, headers: { 'x-shopi
 ok(forged.status === 401, 'forged webhook rejected');
 const ordersBefore = S.orders.length;
 const hmac = createHmac('sha256', 'shpss_test_secret').update(payload).digest('base64');
-const wh = await pub('shopify-webhook', { body: payload, headers: { 'x-shopify-hmac-sha256': hmac } });
+const [wh] = await Promise.all([
+  pub('shopify-webhook', { body: payload, headers: { 'x-shopify-hmac-sha256': hmac } }),
+  pub('order-status', { method: 'GET', qs: `?b=${sb}&t=${stok}` })   // buyer lands back on the status page at the same moment
+]);
 ok(wh.status === 200, 'signed webhook accepted');
+ok((S.sends || []).filter(x => x.id === pd.id && /^Payment received/.test(x.subject || '')).length === 1,
+   'webhook and status page racing on payment: exactly one receipt');
 await Promise.all(S.bgRuns || []);
 const made = S.orders.slice(ordersBefore);
 ok(made.length === 2, 'payment alone created both recipient orders — nobody pressed Release');

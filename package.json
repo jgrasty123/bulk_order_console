@@ -4,7 +4,8 @@
   "type": "module",
   "description": "Internal bulk corporate gift order console — Go-To Gifting LLC",
   "dependencies": {
-    "@netlify/blobs": "^11.1.0"
+    "@netlify/blobs": "^11.1.0",
+    "pdf-lib": "^1.17.1"
   },
   "scripts": {
     "test": "node tools/stamp-assets.mjs && esbuild netlify/functions/*.mjs --bundle --platform=node --format=esm --target=node20 --outdir=tests/.build --log-level=warning && node tests/e2e.mjs && node tests/giftmatch.mjs",
