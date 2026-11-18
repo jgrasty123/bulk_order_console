@@ -87,6 +87,13 @@ export function matchGift(text, index) {
   const bySku = index.find((i) => i.sku.toLowerCase() === raw.toLowerCase());
   if (bySku) return { sku: bySku.sku, confidence: 'exact', candidates: [bySku.sku] };
 
+  // The product's own name, typed in full, always wins — even when filler
+  // words make two titles look alike ("Coffee Lovers Gift" vs
+  // "Gift Basket for Coffee Lovers" both reduce to "coffee lovers").
+  const norm = (t) => displayTitle(t).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const byTitle = index.filter((i) => norm(i.title) === norm(raw));
+  if (byTitle.length === 1) return { sku: byTitle[0].sku, confidence: 'exact', candidates: [byTitle[0].sku] };
+
   const q = tokens(raw);
   const qKey = q.join(' ');
   const same = index.filter((i) => i.toks.join(' ') === qKey);
