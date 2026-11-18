@@ -873,6 +873,60 @@ async function openBatchesDialog() {
   }
 }
 
+/* --- Usage & saved orders (customer page) -------------------------------- */
+
+const STEP_LABEL = { visit: 'Visited', browse: 'Browsed gifts', recipients: 'Added recipients', contact: 'Gave email',
+  priced: 'Got a price', submitted: 'Submitted', paid: 'Paid' };
+const usd = c => '$' + ((c || 0) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const when = iso => iso ? new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+let usageData = null;
+
+async function openUsage() {
+  if (!$('usageDialog').open) $('usageDialog').showModal();
+  $('sessionsBody').innerHTML = '<tr><td class="plain muted" colspan="7">Loading…</td></tr>';
+  $('draftsBody').innerHTML = '';
+  try {
+    usageData = await api('usage?days=' + $('usageDays').value);
+    const d = usageData;
+    const top = d.funnel[0].sessions || 1;
+    $('usageFunnel').innerHTML = d.funnel.map(f =>
+      `<div><b>${f.sessions}</b><span>${esc(STEP_LABEL[f.step])}</span><small>${Math.round(f.sessions / top * 100)}%</small></div>`).join('');
+    $('usageTotals').textContent = `${d.totals.sessions} visits · ${d.totals.identifiedBuyers} buyers gave an email · ${d.totals.openDrafts} saved orders not submitted`;
+
+    const open = d.drafts.filter(x => x.status === 'open');
+    $('draftsBody').innerHTML = open.length ? open.map(x => `
+      <tr>
+        <td class="plain small">${esc(when(x.updatedAt))}</td>
+        <td class="plain"><b>${esc(x.buyer.company || x.buyer.name)}</b><br><span class="small">${esc(x.buyer.name)} · <a href="mailto:${esc(x.buyer.email)}">${esc(x.buyer.email)}</a>${x.buyer.phone ? ' · ' + esc(x.buyer.phone) : ''}</span></td>
+        <td class="plain mono">${x.recipients}</td>
+        <td class="plain mono">${x.totalCents ? usd(x.totalCents) : '—'}</td>
+        <td class="plain small">${x.shopifyDraft && x.shopifyDraft.url ? `<a href="${esc(x.shopifyDraft.url)}" target="_blank" rel="noopener">${esc(x.shopifyDraft.name)}</a>` : (x.shopifyError ? `<span title="${esc(x.shopifyError)}">not created</span>` : '—')}</td>
+        <td class="plain"><button data-copy="${esc(x.resumeUrl)}">Copy resume link</button></td>
+      </tr>`).join('') : '<tr><td class="plain muted" colspan="6">None — nobody has left a priced order unsubmitted in this period.</td></tr>';
+
+    $('sessionsBody').innerHTML = d.sessions.length ? d.sessions.map(x => `
+      <tr>
+        <td class="plain small">${esc(when(x.lastAt))}<br><span class="muted">${esc(x.device)}</span></td>
+        <td class="plain">${x.email ? `<b>${esc(x.company || x.name)}</b><br><span class="small">${esc(x.email)}</span>` : '<span class="muted">anonymous</span>'}</td>
+        <td class="plain">${esc(STEP_LABEL[x.furthest] || x.furthest)}</td>
+        <td class="plain mono">${x.recipients || ''}</td>
+        <td class="plain mono">${x.totalCents ? usd(x.totalCents) : ''}</td>
+        <td class="plain small">${esc(x.source)}${x.campaign ? '<br>' + esc(x.campaign) : ''}</td>
+        <td class="plain small">${x.batchId ? `<button data-open-batch="${esc(x.batchId)}">${esc(x.batchId)}</button><br>${esc((STATUS[x.batchStatus] || {}).label || x.batchStatus)}` : ''}</td>
+      </tr>`).join('') : '<tr><td class="plain muted" colspan="7">No visits recorded in this period.</td></tr>';
+  } catch (err) {
+    $('sessionsBody').innerHTML = `<tr><td class="plain" colspan="7">${esc(err.message)}</td></tr>`;
+  }
+}
+
+function usageCsv() {
+  if (!usageData) return;
+  downloadCsv('corporate-page-visits.csv',
+    ['last_seen', 'first_seen', 'furthest_step', 'name', 'company', 'email', 'recipients', 'quoted_total', 'source', 'campaign', 'device', 'batch', 'batch_status'],
+    usageData.sessions.map(x => [x.lastAt, x.firstAt, x.furthest, x.name, x.company, x.email, x.recipients,
+      x.totalCents ? (x.totalCents / 100).toFixed(2) : '', x.source, x.campaign, x.device, x.batchId, x.batchStatus]));
+}
+
 /* --- Wiring --------------------------------------------------------------- */
 
 function init() {
@@ -937,6 +991,26 @@ function init() {
     ])));
 
   $('openBatches').addEventListener('click', openBatchesDialog);
+  $('openUsage').addEventListener('click', openUsage);
+  $('usageDays').addEventListener('change', openUsage);
+  $('usageClose').addEventListener('click', () => $('usageDialog').close());
+  $('usageCsv').addEventListener('click', usageCsv);
+  $('usageDialog').addEventListener('click', async e => {
+    const url = e.target.dataset && e.target.dataset.copy;
+    if (url) {
+      try { await navigator.clipboard.writeText(url); e.target.textContent = 'Copied'; }
+      catch { prompt('Resume link:', url); }
+      setTimeout(() => { e.target.textContent = 'Copy resume link'; }, 2000);
+    }
+    const id = e.target.dataset && e.target.dataset.openBatch;
+    if (id) {
+      try {
+        const data = await api('batch-status?id=' + encodeURIComponent(id));
+        $('usageDialog').close();
+        openBatch(data.batch);
+      } catch (err) { alert(err.message); }
+    }
+  });
   $('batchesClose').addEventListener('click', () => $('batchesDialog').close());
   $('batchesBody').addEventListener('click', async e => {
     const id = e.target.dataset && e.target.dataset.open;

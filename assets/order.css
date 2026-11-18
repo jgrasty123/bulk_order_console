@@ -325,3 +325,13 @@ dialog.modal::backdrop { background: rgba(17,17,16,.55); }
 dialog.modal h2 { font: 700 1.2rem var(--display); margin: 0.2rem 0 0.4rem; }
 .modal__actions { display: flex; justify-content: flex-end; margin-top: 1.25rem; }
 .eyebrow { font: 600 0.7rem var(--body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); margin: 0; }
+
+/* --- Saved order: contact box, restore banner, save confirmation --------- */
+.contact-box { margin-top: 1.75rem; padding: 1.1rem 1.25rem 1.25rem; border: 1px solid var(--rule-2); background: var(--card); }
+.contact-box h3 { margin: 0 0 0.2rem; font-family: var(--display); font-size: 1.05rem; }
+.contact-box > p { margin: 0 0 0.9rem; font-size: 0.85rem; }
+.restored { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; justify-content: space-between;
+  margin: 0 0 1rem; padding: 0.7rem 1rem; border: 1px solid var(--ok); background: var(--ok-bg); font-size: 0.9rem; }
+.saved-note { margin: 0.75rem 0 0; font-size: 0.85rem; color: var(--ok); text-align: right; }
+.contact-box .grid3 { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 760px) { .contact-box .grid3 { grid-template-columns: 1fr; } }

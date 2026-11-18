@@ -530,3 +530,14 @@ td.plain { padding: 0.5rem 0.625rem; }
 .modal h2 { margin: 0.25rem 0 0.5rem; }
 .modal .field { margin: 1rem 0 0.5rem; }
 .modal__actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
+
+/* --- Usage & saved orders ------------------------------------------------- */
+.modal--xwide { width: min(72rem, calc(100vw - 2rem)); }
+.usage-bar { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; align-items: center; margin: 0.5rem 0 1rem; }
+.funnel { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background: var(--rule-hard); border: 1px solid var(--rule-hard); }
+.funnel div { background: var(--paper-lift); padding: 0.7rem 0.8rem; }
+.funnel b { display: block; font-family: var(--mono, monospace); font-size: 1.35rem; }
+.funnel span { font-size: 0.78rem; }
+.funnel small { display: block; font-size: 0.72rem; opacity: 0.7; }
+.usage-h { margin: 1.5rem 0 0.5rem; font-size: 1rem; }
+@media (max-width: 760px) { .funnel { grid-template-columns: repeat(2, 1fr); } }

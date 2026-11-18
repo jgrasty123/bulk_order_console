@@ -35,6 +35,29 @@ their own batches and oversight. Replaces Zest.
    link until paid, then PAID with a zero balance, plus a recipient schedule.
    Seller block and footer: `invoice` in `config/shipping-rules.json`.
 
+### Saved orders, follow-up and usage (Nov 2026)
+- **Autosave.** Everything on the page (picks, rows, messages, dates, code,
+  buyer contact) is kept in the browser as they type, so a refresh or closed
+  tab never loses an order. A green banner says it was restored, with a
+  "start a new order instead" button. Date of birth is never stored; prices
+  are never restored (re-quoted).
+- **Email before price.** Name + email are asked before "get price". The
+  first price saves the order to the server (`order-draft`, Blobs store
+  `corp-drafts`) and returns a private **resume link** (`/?d=…&t=…`) that
+  restores it on any device.
+- **Shopify follow-up draft.** Each saved order is mirrored to a Shopify
+  draft order tagged **`corp-abandoned`** + `corporate-order`, on the buyer's
+  email, with the gifts, the volume discount, the quoted total and the resume
+  link in the note. Submitting deletes it, so any draft still carrying the tag
+  was never submitted. **Follow up by sending the resume link — never use
+  Shopify's "Send invoice" on these drafts** (no recipients, shipping or tax).
+- **Usage.** First-party only — no cookies, no third-party pixels. The page
+  logs which steps each visit reached (`track`, Blobs store `corp-usage`):
+  visit → browse → recipients → email → priced → submitted, plus paid from
+  the batch. Staff console → **Usage & saved orders** shows the funnel, every
+  visit (who, how far, source/UTM, device), and the open saved orders with a
+  copy-resume-link button. CSV export.
+
 ### Public-endpoint safety (covered by `npm test`)
 - Server re-runs every rule; only catalog products can be ordered.
 - Quotes are HMAC-signed; edited prices, changed addresses, or a 20+ discount
@@ -237,6 +260,9 @@ netlify/functions/
   send-invoice.mjs           email the invoice via Shopify
   batch-status.mjs           load / refresh payment state / list batches
   release-batch-background.mjs  create child orders (15-min background)
+  order-draft.mjs            save / resume an order in progress; Shopify follow-up draft
+  track.mjs                  first-party usage events from the customer page
+  usage.mjs                  staff report: funnel, visits, saved orders
 ```
 
 ---

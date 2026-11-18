@@ -11,7 +11,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png">
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
-<link rel="stylesheet" href="/assets/order.css?v=9298d4ca">
+<link rel="stylesheet" href="/assets/order.css?v=1dfe1f65">
 </head>
 <body>
 
@@ -57,6 +57,11 @@
 
 
   <!-- 1 · Choose gifts -->
+  <div class="restored" id="restored" role="status" hidden>
+    <span id="restoredText">We kept the order you were working on.</span>
+    <button type="button" class="btn btn--quiet" id="restoredClear">Start a new order instead</button>
+  </div>
+
   <section class="step" id="stepChoose">
     <header class="step__head">
       <span class="step__num">1</span>
@@ -163,8 +168,20 @@
       <small class="muted" id="codeNote"></small>
     </label>
 
+    <div class="contact-box">
+      <h3>Where should we send your quote?</h3>
+      <p class="muted">We save your order to this email, so you can come back to it on any device — nothing is charged until checkout.</p>
+      <div class="grid3">
+        <label class="field"><span>Your name</span><input id="bName" autocomplete="name"></label>
+        <label class="field"><span>Company <em>optional</em></span><input id="bCompany" autocomplete="organization"></label>
+        <label class="field"><span>Email</span><input id="bEmail" type="email" autocomplete="email"></label>
+        <label class="field"><span>Phone <em>optional</em></span><input id="bPhone" autocomplete="tel"></label>
+      </div>
+    </div>
+
     <ul class="issues" id="issues" hidden></ul>
     <div class="actions"><button class="btn btn--primary" id="priceBtn" type="button">Check addresses &amp; get price</button></div>
+    <p class="saved-note" id="savedNote" hidden></p>
   </section>
 
   <!-- 2 · Price -->
@@ -188,13 +205,9 @@
   <section class="step" id="step3" hidden>
     <header class="step__head">
       <span class="step__num">4</span>
-      <div><h2>Your details</h2><p class="muted">We’ll email your invoice and a link to follow every delivery.</p></div>
+      <div><h2>Your details</h2><p class="muted">We’ll email your invoice and a link to follow every delivery to <b id="bEmailEcho"></b>.</p></div>
     </header>
     <div class="grid3">
-      <label class="field"><span>Your name</span><input id="bName" autocomplete="name"></label>
-      <label class="field"><span>Company</span><input id="bCompany" autocomplete="organization"></label>
-      <label class="field"><span>Email</span><input id="bEmail" type="email" autocomplete="email"></label>
-      <label class="field"><span>Phone <em>optional</em></span><input id="bPhone" autocomplete="tel"></label>
       <label class="field"><span>PO number <em>optional</em></span><input id="bPo"></label>
       <label class="field"><span>Your date of birth</span><input id="bDob" type="date" autocomplete="bday"></label>
     </div>
@@ -223,6 +236,6 @@
 </footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-<script type="module" src="/assets/order.js?v=bc160d50"></script>
+<script type="module" src="/assets/order.js?v=f1352b97"></script>
 </body>
 </html>

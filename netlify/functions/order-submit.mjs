@@ -15,6 +15,7 @@ import { buildBatch, createBatchWithInvoice, newBatchId, sendInvoice } from '../
 import { saveBatch } from '../lib/common.mjs';
 import { env, AmbiguousWriteError } from '../lib/shopify.mjs';
 import { checkRecipient, discountFor, normaliseState, clean, isAdult, EMAIL_RE } from '../../shared/rules.mjs';
+import { loadDraft, draftTokenMatches, saveDraft, removeShopifyDraft, recordEvent, SID_RE, DAY_RE } from '../lib/drafts.mjs';
 
 const bad = (message, error = 'invalid') => json(400, { error, message });
 
@@ -25,7 +26,7 @@ export default async (req) => {
 
   let body;
   try { body = await req.json(); } catch { return bad('Could not read the order.', 'bad_json'); }
-  const { buyer = {}, recipients = [], deliveryDate = '', turnstileToken } = body;
+  const { buyer = {}, recipients = [], deliveryDate = '', turnstileToken, draftId, draftToken, session } = body;
 
   const blocked = await botCheck(req, turnstileToken);
   if (blocked) return blocked;
@@ -113,6 +114,12 @@ export default async (req) => {
       batch.log.push({ at: new Date().toISOString(), msg: `Invoice email not sent: ${e.message}` });
     }
     await saveBatch(batch);
+    await closeDraft(draftId, draftToken, batch.id);
+    if (session && SID_RE.test(session.sid || '') && DAY_RE.test(session.day || '')) {
+      await recordEvent({ sid: session.sid, day: session.day, event: 'submitted',
+        props: { batchId: batch.id, email: b.email, name: b.name, company: b.company,
+          recipients: batch.recipients.length, totalCents: batch.totalsCents.total } }).catch(() => {});
+    }
 
     return json(200, { id: batch.id, invoiceUrl: batch.parent.invoiceUrl, statusUrl, total: batch.totals.total });
   } catch (err) {
@@ -125,6 +132,21 @@ export default async (req) => {
     return fail(err);
   }
 };
+
+/* The saved order is now a real invoice: mark it submitted and delete its
+   Shopify follow-up draft, so corp-abandoned only ever means abandoned.
+   Never allowed to fail the submit. */
+async function closeDraft(id, token, batchId) {
+  try {
+    const d = await loadDraft(id || '');
+    if (!draftTokenMatches(d, token) || d.status !== 'open') return;
+    d.status = 'submitted';
+    d.batchId = batchId;
+    d.submittedAt = new Date().toISOString();
+    await removeShopifyDraft(d);
+    await saveDraft(d);
+  } catch { /* the order itself is fine */ }
+}
 
 const MAYBE_CREATED =
   "We may have received your order but couldn't confirm it. Please don't submit it again — " +

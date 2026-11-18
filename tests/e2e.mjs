@@ -96,6 +96,20 @@ function handle(query, vars) {
       totalPriceSet: bag(gross - discount + ship + tax),
       taxLines: [{ title: i.shippingAddress.provinceCode + ' State Tax', rate, priceSet: bag(tax) }] } } };
   }
+  if (query.includes('CorpDraftCreate')) {
+    const id = 'gid://shopify/DraftOrder/' + (900 + Object.keys(S.drafts = S.drafts || {}).length);
+    S.drafts[id] = { id, name: '#D' + id.split('/').pop(), input: vars.input, updates: 0 };
+    return { draftOrderCreate: { userErrors: [], draftOrder: { id, name: S.drafts[id].name } } };
+  }
+  if (query.includes('CorpDraftUpdate')) {
+    const d = S.drafts[vars.id];
+    d.input = vars.input; d.updates++;
+    return { draftOrderUpdate: { userErrors: [], draftOrder: { id: d.id, name: d.name } } };
+  }
+  if (query.includes('CorpDraftDelete')) {
+    S.drafts[vars.input.id].deleted = true;
+    return { draftOrderDelete: { userErrors: [], deletedId: vars.input.id } };
+  }
   if (query.includes('mutation CreateParent')) {
     const o = vars.order;
     const gross = o.lineItems.reduce((n, li) => n + cents(li.priceSet.shopMoney.amount) * li.quantity, 0);
@@ -490,6 +504,59 @@ await Promise.all(S.bgRuns || []);
 ok(S.orders.length === ordersBefore + 2, 'duplicate webhook delivery creates nothing new');
 ps = await pub('order-status', { method: 'GET', qs: `?b=${sb}&t=${stok}` });
 ok(ps.data.batch.status === 'released' && ps.data.batch.recipients.every(r => r.order), 'status page shows each recipient’s order');
+
+console.log('\nSaved orders (drafts)');
+const ip2 = { 'x-nf-client-connection-ip': '198.51.100.7' };
+const dpub = (name, opts = {}) => pub(name, { ...opts, headers: { ...ip2, ...(opts.headers || {}) } });
+const dState = { v: 1, rows: [{ firstName: 'Pat1', sku: 'BSKT-053', qty: '1' }], chosen: [], message: 'Hi', buyer: {} };
+const dBuyer = { name: 'Dee Buyer', company: 'Globex', email: 'Dee@Globex.test', phone: '8055550000' };
+ok((await dpub('order-draft', { body: { buyer: { name: 'x' }, state: dState } })).status === 400, 'a draft needs a valid email');
+const dSum = { recipients: 2, units: 3, totalCents: 61234, lines: [{ sku: 'BSKT-053', qty: 2 }, { sku: 'BSKT-032', qty: 1 }, { sku: 'NOT-A-GIFT', qty: 4 }] };
+const d1 = await dpub('order-draft', { body: { buyer: dBuyer, state: dState, summary: dSum, sessionId: 'sessAAAAAAAAAAAAAAAA' } });
+ok(d1.status === 200 && /^D\d{8}-/.test(d1.data.draftId) && d1.data.token && d1.data.resumeUrl.includes('?d='), 'first save returns id, private token and resume link');
+const shopDraft = Object.values(S.drafts)[0];
+ok(shopDraft && shopDraft.input.tags.includes('corp-abandoned') && shopDraft.input.email === 'dee@globex.test', 'Shopify draft order created, tagged corp-abandoned, on the buyer email');
+ok(shopDraft.input.lineItems.length === 2 && !shopDraft.input.lineItems.some(l => /NOT/.test(l.variantId)), 'draft lines are real catalog gifts only');
+ok(shopDraft.input.note.includes(d1.data.resumeUrl) && /Do not use "Send invoice"/.test(shopDraft.input.note), 'draft note carries the resume link and a warning not to invoice it');
+ok(!shopDraft.input.appliedDiscount, 'no volume discount under 20 recipients');
+ok((await dpub('order-draft', { method: 'GET', qs: `?d=${d1.data.draftId}&t=wrong` })).status === 404, 'wrong token cannot open a saved order');
+const got = await dpub('order-draft', { method: 'GET', qs: `?d=${d1.data.draftId}&t=${d1.data.token}` });
+ok(got.status === 200 && got.data.state.rows[0].firstName === 'Pat1' && got.data.buyer.email === 'dee@globex.test', 'resume link returns the saved order');
+await dpub('order-draft', { body: { draftId: d1.data.draftId, token: d1.data.token, buyer: dBuyer, state: dState, summary: dSum } });
+ok(shopDraft.updates === 0 && Object.keys(S.drafts).length === 1, 'saving the same order again does not touch Shopify');
+const d2 = await dpub('order-draft', { body: { draftId: d1.data.draftId, token: d1.data.token, buyer: dBuyer, state: dState,
+  summary: { ...dSum, recipients: 22, lines: [{ sku: 'BSKT-053', qty: 22 }] } } });
+ok(d2.data.draftId === d1.data.draftId && shopDraft.updates === 1 && shopDraft.input.appliedDiscount.value === 10, 'a changed order updates the same Shopify draft (10% at 20+)');
+const d3 = await dpub('order-draft', { body: { draftId: d1.data.draftId, token: 'forged', buyer: dBuyer, state: dState } });
+ok(d3.data.draftId !== d1.data.draftId, 'a wrong token starts a new draft instead of overwriting someone else’s');
+
+console.log('\nUsage tracking');
+const day = new Date().toISOString().slice(0, 10);
+const sid = 'sessBBBBBBBBBBBBBBBB';
+ok((await dpub('track', { body: { sid, day, event: 'hack' } })).status === 400, 'unknown events are refused');
+ok((await dpub('track', { body: { sid, day: '2001-01-01', event: 'visit' } })).status === 400, 'old days are refused');
+await dpub('track', { body: { sid, day, event: 'visit', props: { referrer: 'https://www.google.com/search', utm_campaign: 'q4' } } });
+await dpub('track', { body: { sid, day, event: 'browse' } });
+await dpub('track', { body: { sid, day, event: 'contact', props: { email: 'dee@globex.test', company: 'Globex', name: 'Dee' } } });
+await dpub('track', { body: { sid, day, event: 'priced', props: { recipients: 2, totalCents: 61234 } } });
+
+const fq = await dpub('order-quote', { body: { recipients: small, batchSize: 2 } });
+const dsub = await dpub('order-submit', { body: { buyer: { ...dBuyer, dob: '1980-05-01' }, recipients: small.map(r => ({ ...r, quote: fq.data.quotes[r.key] })),
+  draftId: d1.data.draftId, draftToken: d1.data.token, session: { sid, day } } });
+ok(dsub.status === 200, 'order submitted from a saved draft');
+ok(shopDraft.deleted === true, 'submitting deletes the Shopify follow-up draft, so corp-abandoned only means abandoned');
+const after = await dpub('order-draft', { method: 'GET', qs: `?d=${d1.data.draftId}&t=${d1.data.token}` });
+ok(after.data.status === 'submitted' && after.data.batchId === dsub.data.id, 'saved order marked submitted and linked to its batch');
+
+ok((await call('usage', { method: 'GET', key: 'nope' })).status === 401, 'usage report needs the console key');
+const u = await call('usage', { method: 'GET', qs: '?days=7' });
+const us = u.data.sessions.find(x => x.sid === sid);
+ok(u.status === 200 && us && us.furthest === 'submitted' && us.batchId === dsub.data.id, 'session shows how far the buyer got and their batch');
+ok(us.source === 'google.com' && us.campaign === 'q4' && us.email === 'dee@globex.test', 'session shows source, campaign and who it was');
+const fun = Object.fromEntries(u.data.funnel.map(f => [f.step, f.sessions]));
+ok(fun.visit >= 1 && fun.priced >= 1 && fun.submitted >= 1, 'funnel counts each step');
+ok(u.data.drafts.some(x => x.id === d3.data.draftId && x.status === 'open' && x.resumeUrl) &&
+   u.data.drafts.some(x => x.id === d1.data.draftId && x.status === 'submitted' && !x.resumeUrl), 'saved orders listed: open ones with a resume link, submitted ones without');
 
 console.log('\nRate limit');
 let last;
