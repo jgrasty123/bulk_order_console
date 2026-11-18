@@ -56,6 +56,7 @@ const HEADERS = {
 
 let CONFIG, catalog = new Map(), giftIndex = [], rows = [], seq = 1;
 let priced = null;         // { recipients, quotes, discountPct }
+let draftRef = null;       // { id, token } once the order is saved to the server
 
 
 /* Questions? — a mailto alone is unreliable (a browser with no mail app
@@ -85,6 +86,176 @@ function wireContact(cfg) {
   });
 }
 
+/* --- Saving the order ------------------------------------------------------------
+   Everything the buyer enters is kept in this browser as they type, so a
+   refresh, a closed tab or a crash never loses a list. Once they give an
+   email and get a price, it is also saved to the server (order-draft): a
+   private resume link works on any device, and staff get a Shopify draft
+   order to follow up on. Prices are never restored — they're re-quoted.
+   Date of birth is never stored.
+   ---------------------------------------------------------------------------------- */
+
+const SAVE_KEY = 'bb_corp_order_v1';
+const BUYER_FIELDS = { bName: 'name', bCompany: 'company', bEmail: 'email', bPhone: 'phone', bPo: 'poNumber' };
+const storage = (() => { try { const k = '__t'; localStorage.setItem(k, k); localStorage.removeItem(k); return localStorage; } catch { return null; } })();
+
+const buyerFields = () => Object.fromEntries(Object.entries(BUYER_FIELDS).map(([id, k]) => [k, $(id) ? clean($(id).value) : '']));
+
+function snapshot() {
+  return {
+    v: 1, savedAt: new Date().toISOString(),
+    view: !$('step1').hidden ? 'recipients' : !$('browse').hidden ? 'browse' : 'start',
+    rows: rows.filter((r) => r.firstName || r.lastName || r.address1 || r.sku || r.giftText)
+      .map(({ candidates, ...r }) => ({ ...r, candidates: (candidates || []).slice(0, 5) })),
+    chosen: [...chosen.entries()],
+    message: $('message').value, deliveryDate: $('deliveryDate').value, discountCode: $('discountCode').value,
+    buyer: buyerFields()
+  };
+}
+
+const hasWork = (snap) => snap && ((snap.rows || []).length || (snap.chosen || []).length);
+
+let saveTimer = null;
+function persistSoon() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(persistNow, 400);
+}
+function persistNow() {
+  clearTimeout(saveTimer);
+  if (!storage || !$('done').hidden) return;
+  try {
+    const snap = snapshot();
+    if (hasWork(snap) || Object.values(snap.buyer).some(Boolean)) storage.setItem(SAVE_KEY, JSON.stringify({ ...snap, draft: draftRef }));
+  } catch { /* storage full or blocked: the server copy still works */ }
+}
+
+function restore(snap) {
+  rows = []; seq = 1;
+  (snap.rows || []).forEach((r) => addRow({ ...r, id: undefined }));
+  rows.forEach((r) => { r.id = seq++; });
+  if (rows.length < 2) { addRow(); if (rows.length < 2) addRow(); }
+  chosen.clear();
+  (snap.chosen || []).forEach(([sku, n]) => { if (catalog.has(sku) && n > 0) chosen.set(sku, n); });
+  $('message').value = snap.message || '';
+  $('deliveryDate').value = snap.deliveryDate && snap.deliveryDate >= today() ? snap.deliveryDate : '';
+  $('discountCode').value = snap.discountCode || '';
+  for (const [id, k] of Object.entries(BUYER_FIELDS)) if ($(id) && snap.buyer && snap.buyer[k]) $(id).value = snap.buyer[k];
+  invalidate();
+  if (snap.view === 'recipients' || (snap.rows || []).length) {
+    $('stepChoose').hidden = true; $('step1').hidden = false;
+    renderRows(); renderMatches(); refreshPreviews();
+  } else if ((snap.chosen || []).length || snap.view === 'browse') {
+    goChoose({ focus: false });
+  }
+}
+
+function showRestored(when, fromLink) {
+  const t = when ? new Date(when) : null;
+  const ago = t ? t.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+  $('restoredText').textContent = fromLink
+    ? `Welcome back — here’s the order you saved${ago ? ` on ${ago}` : ''}. Check it over and get a fresh price.`
+    : `We kept the order you were working on${ago ? ` (last edited ${ago})` : ''}.`;
+  $('restored').hidden = false;
+}
+
+async function resumeFromLink() {
+  const p = new URLSearchParams(location.search);
+  const d = p.get('d'), t = p.get('t');
+  if (!d || !t) return false;
+  history.replaceState(null, '', location.pathname);       // don't leave the token in the address bar
+  try {
+    const res = await fetch(`/.netlify/functions/order-draft?d=${encodeURIComponent(d)}&t=${encodeURIComponent(t)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message);
+    if (data.status !== 'open') {
+      showIssues([{ sev: 'warn', msg: 'That saved order was already submitted. Check your email for the invoice and tracking link, or start a new order below.' }]);
+      return false;
+    }
+    draftRef = { id: data.id, token: t };
+    restore({ ...data.state, buyer: { ...(data.state && data.state.buyer), ...data.buyer } });
+    showRestored(data.updatedAt, true);
+    track('resumed', { draftId: data.id, email: data.buyer.email });
+    persistNow();
+    return true;
+  } catch (e) {
+    showIssues([{ sev: 'warn', msg: e.message || 'We couldn’t open that saved order.' }]);
+    return false;
+  }
+}
+
+function resumeLocal() {
+  if (!storage) return;
+  let snap;
+  try { snap = JSON.parse(storage.getItem(SAVE_KEY) || 'null'); } catch { snap = null; }
+  if (!snap) return;
+  if (snap.draft && snap.draft.id) draftRef = snap.draft;
+  if (!hasWork(snap)) { restore({ ...snap, rows: [], chosen: [], view: 'start' }); return; }
+  restore(snap);
+  showRestored(snap.savedAt, false);
+}
+
+/* Server copy. With a summary (after pricing) the Shopify follow-up
+   draft is created/updated too. */
+async function saveToServer({ summary, beacon = false } = {}) {
+  const buyer = buyerFields();
+  if (!EMAIL_RE.test(buyer.email)) return null;
+  const body = JSON.stringify({
+    draftId: draftRef && draftRef.id, token: draftRef && draftRef.token,
+    buyer, state: snapshot(), summary, sessionId: session().sid
+  });
+  if (beacon && navigator.sendBeacon) {
+    navigator.sendBeacon('/.netlify/functions/order-draft', new Blob([body], { type: 'application/json' }));
+    return null;
+  }
+  try {
+    const res = await fetch('/.netlify/functions/order-draft', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: body.length < 60000 });
+    const data = await res.json();
+    if (!res.ok) return null;
+    draftRef = { id: data.draftId, token: data.token };
+    persistNow();
+    return data;
+  } catch { return null; }
+}
+
+/* --- Usage tracking ---------------------------------------------------------------
+   First-party only: a random id in localStorage (no cookie) and which steps
+   this visit reached. A new session starts after 30 minutes idle.
+   ---------------------------------------------------------------------------------- */
+
+const SID_KEY = 'bb_corp_sid';
+let sess = null;
+function session() {
+  if (sess) return sess;
+  const fresh = () => ({ sid: [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, '0')).join(''),
+    day: new Date().toISOString().slice(0, 10), at: Date.now() });
+  try {
+    const old = JSON.parse((storage && storage.getItem(SID_KEY)) || 'null');
+    sess = old && Date.now() - old.at < 30 * 60000 ? old : fresh();
+  } catch { sess = fresh(); }
+  return sess;
+}
+const sent = new Set();
+function track(event, props = {}) {
+  const s = session();
+  s.at = Date.now();
+  try { storage && storage.setItem(SID_KEY, JSON.stringify(s)); } catch { /* fine */ }
+  const key = event + JSON.stringify(props);
+  if (sent.has(key)) return;              // each distinct fact once per page view
+  sent.add(key);
+  const body = JSON.stringify({ sid: s.sid, day: s.day, event, props });
+  try {
+    if (navigator.sendBeacon && navigator.sendBeacon('/.netlify/functions/track', new Blob([body], { type: 'application/json' }))) return;
+    fetch('/.netlify/functions/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
+  } catch { /* tracking must never break the page */ }
+}
+
+function trackVisit() {
+  const q = new URLSearchParams(location.search);
+  const props = { referrer: document.referrer && !document.referrer.startsWith(location.origin) ? document.referrer : '', landing: location.pathname };
+  for (const k of ['utm_source', 'utm_medium', 'utm_campaign']) if (q.get(k)) props[k] = q.get(k);
+  track('visit', props);
+}
+
 /* --- Setup ------------------------------------------------------------------ */
 
 async function init() {
@@ -104,7 +275,22 @@ async function init() {
   addRow(); addRow();
   wire();
   wireBrowse();
+  trackVisit();
+  if (!(await resumeFromLink())) resumeLocal();
+  wireAutosave();
   if (CONFIG.publicSite.turnstileSiteKey) loadTurnstile(CONFIG.publicSite.turnstileSiteKey);
+}
+
+function wireAutosave() {
+  // Any edit anywhere on the page schedules a save; leaving the page saves at once.
+  ['input', 'change', 'click'].forEach((ev) => document.addEventListener(ev, persistSoon, true));
+  window.addEventListener('pagehide', persistNow);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'hidden') return;
+    persistNow();
+    if (draftRef && $('done').hidden) saveToServer({ beacon: true });     // keep the resume link current
+  });
+  $('restoredClear').addEventListener('click', () => startOver({ ask: true }));
 }
 
 /* --- Gift search ----------------------------------------------------------------
@@ -407,6 +593,7 @@ function toRecipients() {
   $('stepChoose').hidden = true;
   $('tray').hidden = true;
   $('step1').hidden = false;
+  track('recipients', { from: 'browse' });
   $('step1').scrollIntoView({ behavior: 'smooth', block: 'start' });
   const first = $('rows').querySelector('input[data-k="firstName"]');
   if (first) first.focus();
@@ -415,11 +602,13 @@ function toRecipients() {
 const plural = (word) => word + (/(x|s|ch|sh)$/i.test(word) ? 'es' : 's');
 
 /* Header nav: jump to either way of starting, from wherever they are. */
-function goChoose() {
+function goChoose({ focus = true } = {}) {
   $('stepChoose').hidden = false;
   $('entry').hidden = true;
   $('browse').hidden = false;
   renderGrid();
+  if (!focus) return;
+  track('browse');
   $('stepChoose').scrollIntoView({ behavior: 'smooth', block: 'start' });
   $('gridSearch').focus();
 }
@@ -427,6 +616,7 @@ function goChoose() {
 function goUpload() {
   $('stepChoose').hidden = true;
   $('step1').hidden = false;
+  track('recipients', { from: 'list' });
   $('fileInput').click();
 }
 
@@ -505,6 +695,8 @@ function ingest(file) {
       renderRows();
       renderMatches();
       showIssues([]);
+      track('upload', { rows: incoming.length });
+      persistNow();
     }
   });
 }
@@ -623,6 +815,10 @@ async function price() {
     (FIELD_TO_COLS[field] || []).forEach((c) => issueMap.get(id)[sev].add(c));
   });
 
+  const buyer = buyerFields();
+  if (!buyer.name) problems.push({ sev: 'stop', msg: 'Please enter your name under “Where should we send your quote?”.' });
+  if (!EMAIL_RE.test(buyer.email)) problems.push({ sev: 'stop', msg: 'Please enter a valid email under “Where should we send your quote?” — we save your order there.' });
+
   const open = pending();
   if (open.length) {
     problems.push({ sev: 'stop', msg: `Please check ${open.length} gift name${open.length === 1 ? '' : 's'} from your spreadsheet in “Check your gifts” above.` });
@@ -649,6 +845,9 @@ async function price() {
   const blocking = problems.filter((p) => p.sev === 'stop');
   showIssues(blocking.length ? blocking : problems);
   if (blocking.length) { $('issues').scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+
+  track('contact', { email: buyer.email, name: buyer.name, company: buyer.company, recipients: recipients.length });
+  persistNow();
 
   // Price in small chunks; the server re-checks everything.
   $('step2').hidden = false;
@@ -696,6 +895,17 @@ async function price() {
   priced = { recipients, quotes, discountPct };
   renderPrice();
   $('step3').hidden = false;
+  $('bEmailEcho').textContent = buyer.email;
+
+  const lines = recipients.flatMap((r) => r.lines.map((l) => ({ sku: l.sku, qty: Number(l.qty) })));
+  const units = lines.reduce((n, l) => n + l.qty, 0);
+  track('priced', { recipients: recipients.length, totalCents: priced.total });
+  const saved = await saveToServer({ summary: { recipients: recipients.length, units, totalCents: priced.total, lines } });
+  if (saved) {
+    track('saved', { draftId: saved.draftId });
+    $('savedNote').hidden = false;
+    $('savedNote').textContent = `Saved to ${buyer.email} — you can close this page and come back to it.`;
+  }
 }
 
 /* Tell the customer plainly what their code did. */
@@ -761,12 +971,9 @@ async function submit() {
   $('submitError').hidden = true;
   if (!priced) return err('Please get a price first.');
 
-  const buyer = {
-    name: clean($('bName').value), company: clean($('bCompany').value), email: clean($('bEmail').value),
-    phone: clean($('bPhone').value), poNumber: clean($('bPo').value), dob: $('bDob').value
-  };
-  if (!buyer.name) return err('Please enter your name.');
-  if (!EMAIL_RE.test(buyer.email)) return err('Please enter a valid email.');
+  const buyer = { ...buyerFields(), dob: $('bDob').value };
+  if (!buyer.name) return err('Please enter your name above, under “Where should we send your quote?”.');
+  if (!EMAIL_RE.test(buyer.email)) return err('Please enter a valid email above, under “Where should we send your quote?”.');
   if (!isAdult(buyer.dob)) return err('You must be 21 or older to place this order.');
   if (CONFIG.publicSite.turnstileSiteKey && !turnstileToken) return err('Please complete the security check.');
 
@@ -777,6 +984,8 @@ async function submit() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         buyer, turnstileToken, deliveryDate: $('deliveryDate').value, discountCode: $('discountCode').value.trim(),
+        draftId: draftRef && draftRef.id, draftToken: draftRef && draftRef.token,
+        session: { sid: session().sid, day: session().day },
         recipients: priced.recipients.map((r) => ({ ...r, quote: priced.quotes[r.key] }))
       })
     });
@@ -801,6 +1010,9 @@ async function submit() {
     $('doneEmail').textContent = buyer.email;
     ['step1', 'step2', 'step3'].forEach((id) => { $(id).hidden = true; });
     $('done').hidden = false;
+    $('restored').hidden = true;
+    draftRef = null;
+    try { storage && storage.removeItem(SAVE_KEY); } catch { /* fine */ }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   } catch (e) {
     err(e.message);
@@ -823,13 +1035,17 @@ function loadTurnstile(siteKey) {
 /* Clear everything and begin a new order. Asks first when there is
    something to lose. */
 function startOver({ ask = true } = {}) {
-  const hasWork = rows.some((r) => r.firstName || r.lastName || r.address1 || r.sku);
-  if (ask && hasWork && !confirm('Clear this order and start over? Everything you have entered will be removed.')) return;
+  const hasRows = rows.some((r) => r.firstName || r.lastName || r.address1 || r.sku) || chosen.size > 0;
+  if (ask && hasRows && !confirm('Clear this order and start over? Everything you have entered will be removed.')) return;
 
-  rows = []; seq = 1; priced = null;
+  rows = []; seq = 1; priced = null; draftRef = null;
   addRow(); addRow();
-  ['message', 'deliveryDate', 'discountCode', 'bName', 'bCompany', 'bEmail', 'bPhone', 'bPo', 'bDob']
+  // Keep who they are (name, company, email, phone) for the next order; clear the order itself.
+  ['message', 'deliveryDate', 'discountCode', 'bPo', 'bDob']
     .forEach((id) => { if ($(id)) $(id).value = ''; });
+  $('restored').hidden = true;
+  $('savedNote').hidden = true;
+  try { storage && storage.removeItem(SAVE_KEY); } catch { /* fine */ }
   $('codeNote').textContent = ''; $('codeNote').className = 'muted';
   $('msgPreview').textContent = '';
   $('submitError').hidden = true;

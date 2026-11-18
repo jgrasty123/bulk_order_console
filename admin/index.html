@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/assets/styles.css?v=4b886f54">
+<link rel="stylesheet" href="/assets/styles.css?v=0b017690">
 </head>
 <body>
 
@@ -35,6 +35,27 @@
   </div>
 </dialog>
 
+<dialog id="usageDialog" class="modal modal--wide modal--xwide">
+  <div>
+    <p class="eyebrow">Customer order page · corporder.thebrobasket.com</p>
+    <h2>Usage &amp; saved orders</h2>
+    <div class="usage-bar">
+      <label>Last <select id="usageDays"><option value="7">7 days</option><option value="30" selected>30 days</option><option value="90">90 days</option></select></label>
+      <span class="small muted" id="usageTotals"></span>
+    </div>
+    <div class="funnel" id="usageFunnel"></div>
+
+    <h3 class="usage-h">Saved, not submitted <span class="small muted">— follow up with the resume link. Each has a Shopify draft order tagged <span class="mono">corp-abandoned</span>.</span></h3>
+    <div class="grid-wrap grid-wrap--tall"><table><thead><tr><th>Last saved</th><th>Buyer</th><th>Recipients</th><th>Quoted</th><th>Shopify draft</th><th></th></tr></thead>
+      <tbody id="draftsBody"></tbody></table></div>
+
+    <h3 class="usage-h">Every visit</h3>
+    <div class="grid-wrap grid-wrap--tall"><table><thead><tr><th>Last seen</th><th>Who</th><th>Got to</th><th>Recipients</th><th>Quoted</th><th>Source</th><th>Order</th></tr></thead>
+      <tbody id="sessionsBody"></tbody></table></div>
+    <div class="modal__actions"><button type="button" id="usageCsv">Download visits CSV</button><button type="button" id="usageClose">Close</button></div>
+  </div>
+</dialog>
+
 <header class="masthead">
   <div>
     <p class="eyebrow">Go-To Gifting LLC · Internal</p>
@@ -45,6 +66,7 @@
       Batch <b id="batchId" class="mono">—</b><br>
       Store <b id="storeLabel" class="mono">not connected</b>
     </div>
+    <button id="openUsage" type="button">Usage &amp; saved orders</button>
     <button id="openBatches" type="button">Saved batches</button>
   </div>
 </header>
@@ -191,6 +213,6 @@
 </main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-<script src="/assets/app.js?v=d58bef23"></script>
+<script src="/assets/app.js?v=1f553790"></script>
 </body>
 </html>
