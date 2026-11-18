@@ -335,3 +335,5 @@ dialog.modal h2 { font: 700 1.2rem var(--display); margin: 0.2rem 0 0.4rem; }
 .saved-note { margin: 0.75rem 0 0; font-size: 0.85rem; color: var(--ok); text-align: right; }
 .contact-box .grid3 { grid-template-columns: repeat(4, 1fr); }
 @media (max-width: 760px) { .contact-box .grid3 { grid-template-columns: 1fr; } }
+.upload-hint { margin: 0 0 1rem; padding: 0.8rem 1rem 0.8rem 2.2rem; border: 1px solid var(--amber); background: var(--amber-2); font-size: 0.9rem; }
+.upload-hint li + li { margin-top: 0.25rem; }

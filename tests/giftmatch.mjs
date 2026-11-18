@@ -22,6 +22,10 @@ const wb = m('whiskey basket');
 ok(wb.confidence === 'unsure' && !wb.sku && wb.candidates.length >= 3, 'ambiguous "whiskey basket" asks, never guesses');
 const cl = m('Coffee Lovers');
 ok(!cl.sku && cl.candidates.slice(0, 2).every((s) => /coffee lovers/i.test(title(s))), 'several "Coffee Lovers" products → ask, best ones first');
+ok(m('Coffee Lovers Gift').confidence === 'exact' && title(m('Coffee Lovers Gift').sku) === 'Coffee Lovers Gift',
+  'a product name typed in full matches outright, even when another title shares its key words');
+ok(m('gift basket for coffee lovers').confidence === 'exact' && /^GIft Basket for Coffee Lovers/i.test(title(m('gift basket for coffee lovers').sku)),
+  'the look-alike title, typed in full, matches its own product');
 ok(/n\/a/i.test(title(m('non alcoholic beer').candidates[0])), '"non alcoholic beer" suggests the N/A products first');
 ok(m('').confidence === 'none' && m('zzqx').sku === '', 'nonsense never matches');
 console.log('\nGift search (what someone types into the search box)');

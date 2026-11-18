@@ -613,11 +613,14 @@ function goChoose({ focus = true } = {}) {
   $('gridSearch').focus();
 }
 
+/* Go to the list step without opening the file picker: most people need
+   the template first, then come back and press Upload spreadsheet. */
 function goUpload() {
   $('stepChoose').hidden = true;
   $('step1').hidden = false;
   track('recipients', { from: 'list' });
-  $('fileInput').click();
+  $('uploadHint').hidden = false;
+  $('step1').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function wireBrowse() {
